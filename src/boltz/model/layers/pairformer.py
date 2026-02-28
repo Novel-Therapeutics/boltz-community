@@ -4,8 +4,7 @@ import torch
 from torch import Tensor, nn
 
 from boltz.data import const
-from boltz.model.layers.attention import AttentionPairBias
-from boltz.model.layers.attentionv2 import AttentionPairBias as AttentionPairBiasV2
+from boltz.model.layers.attentionv2 import AttentionPairBias
 from boltz.model.layers.dropout import get_dropout_mask
 from boltz.model.layers.transition import Transition
 from boltz.model.layers.triangular_attention.attention import (
@@ -30,7 +29,7 @@ class PairformerLayer(nn.Module):
         pairwise_head_width: int = 32,
         pairwise_num_heads: int = 4,
         post_layer_norm: bool = False,
-        v2: bool = False,
+        v2: bool = True,
     ) -> None:
         super().__init__()
         self.token_z = token_z
@@ -39,10 +38,7 @@ class PairformerLayer(nn.Module):
         self.post_layer_norm = post_layer_norm
 
         self.pre_norm_s = nn.LayerNorm(token_s)
-        if v2:
-            self.attention = AttentionPairBiasV2(token_s, token_z, num_heads)
-        else:
-            self.attention = AttentionPairBias(token_s, token_z, num_heads)
+        self.attention = AttentionPairBias(token_s, token_z, num_heads)
 
         self.tri_mul_out = TriangleMultiplicationOutgoing(token_z)
         self.tri_mul_in = TriangleMultiplicationIncoming(token_z)
@@ -127,7 +123,7 @@ class PairformerModule(nn.Module):
         pairwise_num_heads: int = 4,
         post_layer_norm: bool = False,
         activation_checkpointing: bool = False,
-        v2: bool = False,
+        v2: bool = True,
         **kwargs,
     ) -> None:
         super().__init__()
