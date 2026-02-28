@@ -1,7 +1,44 @@
+# boltz-community
+
+Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with relaxed dependency pins for ecosystem compatibility.
+
+## What's different from upstream?
+
+- Dependency pins relaxed from `==` to `>=` (no code changes)
+- `fairscale` removed (dead dependency, not imported anywhere)
+- `numpy<2.0` cap removed (boltz uses no numpy 1.x-only APIs)
+- `requires-python` widened to `>=3.10` (removed `<3.13` cap)
+- Cherry-picked community bug fixes: [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#488](https://github.com/jwohlwend/boltz/pull/488), [#363](https://github.com/jwohlwend/boltz/pull/363)
+
+## Goal
+
+Stay as close to upstream as possible. When `jwohlwend/boltz` resumes activity, these changes should be submitted as PRs and this fork sunset.
+
+## Installation
+
+Install from GitHub:
+
+```
+pip install "boltz-community @ git+https://github.com/volgin/boltz-community.git"
+```
+
+With CUDA kernels:
+
+```
+pip install "boltz-community[cuda] @ git+https://github.com/volgin/boltz-community.git"
+```
+
+If you are installing on CPU-only or non-CUDA GPU hardware, use the first command without `[cuda]`. Note that the CPU version is significantly slower than the GPU version.
+
+---
+
+*Everything below is from the upstream Boltz README.*
+
+---
+
 <div align="center">
   <div>&nbsp;</div>
   <img src="docs/boltz2_title.png" width="300"/>
-  <img src="https://model-gateway.boltz.bio/a.png?x-pxid=bce1627f-f326-4bff-8a97-45c6c3bc929d" />
 
 [Boltz-1](https://doi.org/10.1101/2024.11.19.624167) | [Boltz-2](https://doi.org/10.1101/2025.06.14.659707) |
 [Slack](https://boltz.bio/join-slack) <br> <br>
@@ -17,25 +54,6 @@
 Boltz is a family of models for biomolecular interaction prediction. Boltz-1 was the first fully open source model to approach AlphaFold3 accuracy. Our latest work Boltz-2 is a new biomolecular foundation model that goes beyond AlphaFold3 and Boltz-1 by jointly modeling complex structures and binding affinities, a critical component towards accurate molecular design. Boltz-2 is the first deep learning model to approach the accuracy of physics-based free-energy perturbation (FEP) methods, while running 1000x faster — making accurate in silico screening practical for early-stage drug discovery.
 
 All the code and weights are provided under MIT license, making them freely available for both academic and commercial uses. For more information about the model, see the [Boltz-1](https://doi.org/10.1101/2024.11.19.624167) and [Boltz-2](https://doi.org/10.1101/2025.06.14.659707) technical reports. To discuss updates, tools and applications join our [Slack channel](https://boltz.bio/join-slack).
-
-## Installation
-
-> Note: we recommend installing boltz in a fresh python environment
-
-Install boltz with PyPI (recommended):
-
-```
-pip install boltz[cuda] -U
-```
-
-or directly from GitHub for daily updates:
-
-```
-git clone https://github.com/jwohlwend/boltz.git
-cd boltz; pip install -e .[cuda]
-```
-
-If you are installing on CPU-only or non-CUDA GPus hardware, remove `[cuda]` from the above commands. Note that the CPU version is significantly slower than the GPU version.
 
 ## Inference
 
