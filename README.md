@@ -9,9 +9,12 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with re
 - `numpy<2.0` cap removed (boltz uses no numpy 1.x-only APIs)
 - `requires-python` widened to `>=3.10` (removed `<3.13` cap)
 - Cherry-picked community bug fixes: [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#488](https://github.com/jwohlwend/boltz/pull/488), [#363](https://github.com/jwohlwend/boltz/pull/363)
-- 108 new tests covering loss functions, model layers, data parsers, potentials, and output writers (all CPU-only, no checkpoint required)
+- 124 new tests covering loss functions, model layers, data parsers, potentials, output writers, and bug-fix regressions (all CPU-only, no checkpoint required)
 - Fixed broken v1 attention code path in `PairformerLayer` (dead branch that would crash at runtime if triggered)
 - Fixed SIGSEGV crash on ligands with invalid implicit valence ([upstream #649](https://github.com/jwohlwend/boltz/issues/649))
+- Fixed `--subsample_msa` defaulting to False instead of True ([upstream #628](https://github.com/jwohlwend/boltz/issues/628))
+- Fixed 2-char elements (Ca, Fe, Br, Cl) misidentified in PDB/mmCIF output ([upstream #458](https://github.com/jwohlwend/boltz/issues/458)) — added `element` field to `AtomV2` dtype
+- Fixed atom name overflow (>4 chars) crashing ligand processing for large molecules ([upstream #494](https://github.com/jwohlwend/boltz/issues/494))
 
 ## Contributing to the Community Fork
 
