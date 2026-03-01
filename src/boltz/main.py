@@ -1019,8 +1019,8 @@ def cli() -> None:
     default=8192,
 )
 @click.option(
-    "--subsample_msa",
-    is_flag=True,
+    "--subsample_msa/--no_subsample_msa",
+    default=True,
     help="Whether to subsample the MSA. Default is True.",
 )
 @click.option(

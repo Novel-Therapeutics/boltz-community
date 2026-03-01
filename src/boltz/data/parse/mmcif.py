@@ -34,6 +34,7 @@ class ParsedAtom:
     """A parsed atom object."""
 
     name: str
+    element: int
     coords: tuple[float, float, float]
     is_present: bool
     bfactor: float
@@ -425,6 +426,7 @@ def parse_ccd_residue(  # noqa: PLR0915, C901
         ref_atom = ref_mol.GetAtoms()[0]
         atom = ParsedAtom(
             name=ref_atom.GetProp("name"),
+            element=ref_atom.GetAtomicNum(),
             coords=pos,
             is_present=is_present,
             bfactor=bfactor,
@@ -484,6 +486,7 @@ def parse_ccd_residue(  # noqa: PLR0915, C901
         atoms.append(
             ParsedAtom(
                 name=atom_name,
+                element=atom.GetAtomicNum(),
                 coords=coords,
                 is_present=atom_is_present,
                 bfactor=bfactor.get(atom_name, 0),
@@ -656,6 +659,7 @@ def parse_polymer(  # noqa: C901, PLR0915, PLR0912
             atoms.append(
                 ParsedAtom(
                     name=atom_name,
+                    element=ref_atom.GetAtomicNum(),
                     coords=coords,
                     is_present=atom_is_present,
                     bfactor=bfactor,
@@ -1156,6 +1160,7 @@ def parse_mmcif(  # noqa: C901, PLR0915, PLR0912
                 atom_data.append(
                     (
                         atom.name,
+                        atom.element,
                         atom.coords,
                         atom.is_present,
                         atom.bfactor,

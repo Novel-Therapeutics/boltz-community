@@ -1,5 +1,4 @@
 import io
-import re
 from collections.abc import Iterator
 from typing import Optional
 
@@ -166,16 +165,9 @@ def to_mmcif(
 
                         if boltz2:
                             atom_name = str(atom["name"])
-                            atom_key = re.sub(r"\d", "", atom_name)
-                            if atom_key in const.ambiguous_atoms:
-                                if isinstance(const.ambiguous_atoms[atom_key], str):
-                                    element = const.ambiguous_atoms[atom_key]
-                                elif res_name in const.ambiguous_atoms[atom_key]:
-                                    element = const.ambiguous_atoms[atom_key][res_name]
-                                else:
-                                    element = const.ambiguous_atoms[atom_key]["*"]
-                            else:
-                                element = atom_key[0]
+                            element = periodic_table.GetElementSymbol(
+                                atom["element"].item()
+                            )
                         else:
                             atom_name = atom["name"]
                             atom_name = [chr(c + 32) for c in atom_name if c != 0]

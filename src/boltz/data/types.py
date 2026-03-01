@@ -1,4 +1,5 @@
 import json
+import warnings
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional, Union
@@ -94,6 +95,7 @@ Atom = [
 
 AtomV2 = [
     ("name", np.dtype("<U4")),
+    ("element", np.dtype("i1")),
     ("coords", np.dtype("3f4")),
     ("is_present", np.dtype("?")),
     ("bfactor", np.dtype("f4")),
@@ -332,6 +334,29 @@ class StructureV2(NumpySerializable):
     coords: np.ndarray
     ensemble: np.ndarray
     pocket: Optional[np.ndarray] = None
+
+    @classmethod
+    def load(cls: "StructureV2", path: Path) -> "StructureV2":
+        """Load a StructureV2 from an NPZ file.
+
+        Handles backwards compatibility for files saved before the
+        ``element`` field was added to AtomV2.
+
+        """
+        data = dict(np.load(path, allow_pickle=True))
+        atoms = data["atoms"]
+        if "element" not in atoms.dtype.names:
+            warnings.warn(
+                f"NPZ file {path} was saved without the AtomV2 'element' "
+                f"field. Element types will be unknown (written as '*' in "
+                f"PDB/mmCIF output). Re-run parsing to regenerate this file.",
+                stacklevel=2,
+            )
+            new_atoms = np.zeros(len(atoms), dtype=AtomV2)
+            for field in atoms.dtype.names:
+                new_atoms[field] = atoms[field]
+            data["atoms"] = new_atoms
+        return cls(**data)
 
     def remove_invalid_chains(self) -> "StructureV2":  # noqa: PLR0915
         """Remove invalid chains.

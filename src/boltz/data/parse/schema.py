@@ -1246,15 +1246,26 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
             mol.UpdatePropertyCache(strict=True)
             mol = AllChem.AddHs(mol)
 
-            # Set atom names
+            # Set atom names using per-element sequential numbering in
+            # canonical order.  This replaces the old scheme (element +
+            # global canonical rank) which overflows PDB's 4-char atom
+            # name limit on molecules with >99 atoms.  Per-element
+            # numbering supports up to 999 atoms for 1-char elements
+            # (e.g. C999) and 99 for 2-char elements (e.g. BR99).
             canonical_order = AllChem.CanonicalRankAtoms(mol)
             Chem.AssignStereochemistry(mol, force=True, cleanIt=True)
-            for atom, can_idx in zip(mol.GetAtoms(), canonical_order):
-                atom_name = atom.GetSymbol().upper() + str(can_idx + 1)
-                if len(atom_name) > 4:
+            element_counts: dict[str, int] = {}
+            for idx in sorted(
+                range(mol.GetNumAtoms()), key=lambda i: canonical_order[i]
+            ):
+                atom = mol.GetAtomWithIdx(idx)
+                symbol = atom.GetSymbol().upper()
+                element_counts[symbol] = element_counts.get(symbol, 0) + 1
+                atom_name = symbol + str(element_counts[symbol])
+                if len(atom_name) > 4:  # noqa: PLR2004
                     msg = (
-                        f"{seq} has an atom with a name longer than "
-                        f"4 characters: {atom_name}."
+                        f"{seq} has too many atoms of element {symbol} "
+                        f"to fit in PDB 4-character atom name limit."
                     )
                     raise ValueError(msg)
                 atom.SetProp("name", atom_name)
@@ -1757,7 +1768,7 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
     )
 
     if boltz_2:
-        atom_data = [(a[0], a[3], a[5], 0.0, 1.0) for a in atom_data]
+        atom_data = [(a[0], a[1], a[3], a[5], 0.0, 1.0) for a in atom_data]
         connections = [(*c, const.bond_type_ids["COVALENT"]) for c in connections]
         bond_data = bond_data + connections
         atoms = np.array(atom_data, dtype=AtomV2)
