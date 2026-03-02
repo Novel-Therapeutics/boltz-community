@@ -172,3 +172,40 @@ class TestGetPotentials:
         type_names = [type(p).__name__ for p in potentials]
         assert "ContactPotentital" in type_names
         assert "TemplateReferencePotential" in type_names
+
+
+class TestBfloat16Potential:
+    """FlatBottomPotential must work with bfloat16 inputs on CPU.
+
+    When AMP autocast produces bfloat16 tensors, arithmetic may upcast
+    to float32. The indexed assignment back into a bfloat16 tensor
+    requires explicit dtype casts.
+    """
+
+    def test_energy(self):
+        """compute_function returns bfloat16 energy for bfloat16 inputs."""
+        pot = ConnectionsPotential()
+        value = torch.tensor([1.0], dtype=torch.bfloat16)
+        k = torch.tensor([2.0], dtype=torch.bfloat16)
+        lower = torch.tensor([3.0], dtype=torch.bfloat16)
+        upper = torch.tensor([7.0], dtype=torch.bfloat16)
+
+        energy = pot.compute_function(value, k, lower, upper)
+        assert energy.dtype == torch.bfloat16
+        assert torch.isfinite(energy).all()
+        # energy = k * (lower - value) = 2 * (3 - 1) = 4
+        assert energy.item() == pytest.approx(4.0, abs=0.1)
+
+    def test_derivative(self):
+        """compute_function derivative preserves bfloat16 dtype."""
+        pot = ConnectionsPotential()
+        value = torch.tensor([1.0], dtype=torch.bfloat16)
+        k = torch.tensor([2.0], dtype=torch.bfloat16)
+        lower = torch.tensor([3.0], dtype=torch.bfloat16)
+        upper = torch.tensor([7.0], dtype=torch.bfloat16)
+
+        energy, dEnergy = pot.compute_function(
+            value, k, lower, upper, compute_derivative=True
+        )
+        assert dEnergy.dtype == torch.bfloat16
+        assert torch.isfinite(dEnergy).all()

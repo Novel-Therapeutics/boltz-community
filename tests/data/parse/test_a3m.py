@@ -86,3 +86,30 @@ class TestParseA3m:
 
         assert len(msa.sequences) > 0
         assert len(msa.residues) > 0
+
+
+class TestA3mNullBytes:
+    """A3M parser must handle null bytes without crashing.
+
+    Some MSA server responses contain \\x00 bytes which would cause KeyError
+    in prot_letter_to_token lookup if not stripped.
+    """
+
+    def test_null_bytes_stripped(self, tmp_path):
+        """A3M file with null bytes parses without error."""
+        content = ">query\nACDEF\x00\n>seq2\nAC\x00DEF\n"
+        p = tmp_path / "null.a3m"
+        p.write_text(content)
+
+        msa = parse_a3m(p, taxonomy=None, max_seqs=None)
+        assert len(msa.sequences) > 0
+        assert len(msa.residues) > 0
+
+    def test_null_only_line_skipped(self, tmp_path):
+        """A line containing only null bytes is skipped."""
+        content = ">query\nACDEF\n\x00\x00\x00\n>seq2\nACDEF\n"
+        p = tmp_path / "null2.a3m"
+        p.write_text(content)
+
+        msa = parse_a3m(p, taxonomy=None, max_seqs=None)
+        assert len(msa.sequences) >= 1
