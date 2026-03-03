@@ -1197,6 +1197,13 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     # Load manifest
     manifest = Manifest.load(out_dir / "processed" / "manifest.json")
 
+    if not manifest.records:
+        msg = (
+            "No inputs were successfully processed. "
+            "Check the error messages above for details."
+        )
+        raise click.ClickException(msg)
+
     # Filter out existing predictions
     filtered_manifest = filter_inputs_structure(
         manifest=manifest,
