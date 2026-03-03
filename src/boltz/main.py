@@ -280,13 +280,15 @@ def get_cache_path() -> str:
     return str(Path("~/.boltz").expanduser())
 
 
-def check_inputs(data: Path) -> list[Path]:
+def check_inputs(data: Path, skip_bad_inputs: bool = False) -> list[Path]:
     """Check the input data and output directory.
 
     Parameters
     ----------
     data : Path
         The input data.
+    skip_bad_inputs : bool
+        If True, filter out invalid entries and warn instead of aborting.
 
     Returns
     -------
@@ -300,18 +302,25 @@ def check_inputs(data: Path) -> list[Path]:
     if data.is_dir():
         data: list[Path] = list(data.glob("*"))
 
-        # Filter out non .fasta or .yaml files, raise
-        # an error on directory and other file types
+        # Filter out non .fasta or .yaml files
+        valid = []
         for d in data:
             if d.is_dir():
                 msg = f"Found directory {d} instead of .fasta or .yaml."
-                raise RuntimeError(msg)
-            if d.suffix.lower() not in (".fa", ".fas", ".fasta", ".yml", ".yaml"):
+            elif d.suffix.lower() not in (".fa", ".fas", ".fasta", ".yml", ".yaml"):
                 msg = (
                     f"Unable to parse filetype {d.suffix}, "
                     "please provide a .fasta or .yaml file."
                 )
+            else:
+                valid.append(d)
+                continue
+
+            if not skip_bad_inputs:
                 raise RuntimeError(msg)
+            click.echo(f"Skipping: {msg}")
+
+        data = valid
     else:
         data = [data]
 
@@ -550,7 +559,8 @@ def process_input(  # noqa: C901, PLR0912, PLR0915, D103
     processed_mols_dir: Path,
     structure_dir: Path,
     records_dir: Path,
-) -> None:
+    skip_bad_inputs: bool = False,
+) -> Optional[str]:
     try:
         # Parse data
         if path.suffix.lower() in (".fa", ".fas", ".fasta"):
@@ -673,11 +683,12 @@ def process_input(  # noqa: C901, PLR0912, PLR0915, D103
         record_path = records_dir / f"{target.record.id}.json"
         target.record.dump(record_path)
 
-    except Exception as e:  # noqa: BLE001
-        import traceback
+        return None
 
-        traceback.print_exc()
-        print(f"Failed to process {path}. Skipping. Error: {e}.")  # noqa: T201
+    except Exception as e:  # noqa: BLE001
+        if not skip_bad_inputs:
+            raise
+        return f"{path.name}: {e}"
 
 
 @rank_zero_only
@@ -696,6 +707,7 @@ def process_inputs(
     api_key_value: Optional[str] = None,
     boltz2: bool = False,
     preprocessing_threads: int = 1,
+    skip_bad_inputs: bool = False,
 ) -> Manifest:
     """Process the input data and output directory.
 
@@ -813,6 +825,7 @@ def process_inputs(
         processed_mols_dir=processed_mols_dir,
         structure_dir=structure_dir,
         records_dir=records_dir,
+        skip_bad_inputs=skip_bad_inputs,
     )
 
     # Parse input data
@@ -821,10 +834,18 @@ def process_inputs(
 
     if preprocessing_threads > 1 and len(data) > 1:
         with Pool(preprocessing_threads) as pool:
-            list(tqdm(pool.imap(process_input_partial, data), total=len(data)))
+            errors = list(tqdm(pool.imap(process_input_partial, data), total=len(data)))
     else:
+        errors = []
         for path in tqdm(data):
-            process_input_partial(path)
+            errors.append(process_input_partial(path))
+
+    # Report failures
+    failures = [e for e in errors if e is not None]
+    if failures:
+        click.echo(f"\n{len(failures)} input(s) failed:")
+        for msg in failures:
+            click.echo(f"  {msg}")
 
     # Load all records and write manifest
     records = [Record.load(p) for p in records_dir.glob("*.json")]
@@ -941,6 +962,11 @@ def cli() -> None:
     "--override",
     is_flag=True,
     help="Whether to override existing found predictions. Default is False.",
+)
+@click.option(
+    "--skip_bad_inputs",
+    is_flag=True,
+    help="Skip invalid inputs instead of aborting. Default: abort on first error.",
 )
 @click.option(
     "--seed",
@@ -1086,6 +1112,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     output_format: Literal["pdb", "mmcif"] = "mmcif",
     num_workers: int = 2,
     override: bool = False,
+    skip_bad_inputs: bool = False,
     seed: Optional[int] = None,
     use_msa_server: bool = False,
     msa_server_url: str = "https://api.colabfold.com",
@@ -1197,7 +1224,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         raise ValueError(f"Model {model} not supported.")
 
     # Validate inputs
-    data = check_inputs(data)
+    data = check_inputs(data, skip_bad_inputs=skip_bad_inputs)
 
     # Check method
     if method is not None:
@@ -1227,17 +1254,17 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         boltz2=model == "boltz2",
         preprocessing_threads=preprocessing_threads,
         max_msa_seqs=max_msa_seqs,
+        skip_bad_inputs=skip_bad_inputs,
     )
 
     # Load manifest
     manifest = Manifest.load(out_dir / "processed" / "manifest.json")
 
     if not manifest.records:
-        msg = (
+        raise click.ClickException(
             "No inputs were successfully processed. "
             "Check the error messages above for details."
         )
-        raise click.ClickException(msg)
 
     # Filter out existing predictions
     filtered_manifest = filter_inputs_structure(
