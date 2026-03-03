@@ -156,28 +156,27 @@ class PredictionDataset(torch.utils.data.Dataset):
         Dict[str, Tensor]
             The sampled data features.
 
+        Raises
+        ------
+        Exception
+            If any pipeline stage fails for this record. During inference
+            failures must surface rather than silently returning a different
+            record's results.
+
         """
         # Get a sample from the dataset
         record = self.manifest.records[idx]
 
         # Get the structure
-        try:
-            input_data = load_input(
-                record,
-                self.target_dir,
-                self.msa_dir,
-                self.constraints_dir,
-            )
-        except Exception as e:  # noqa: BLE001
-            print(f"Failed to load input for {record.id} with error {e}. Skipping.")  # noqa: T201
-            return self.__getitem__(0)
+        input_data = load_input(
+            record,
+            self.target_dir,
+            self.msa_dir,
+            self.constraints_dir,
+        )
 
         # Tokenize structure
-        try:
-            tokenized = self.tokenizer.tokenize(input_data)
-        except Exception as e:  # noqa: BLE001
-            print(f"Tokenizer failed on {record.id} with error {e}. Skipping.")  # noqa: T201
-            return self.__getitem__(0)
+        tokenized = self.tokenizer.tokenize(input_data)
 
         # Inference specific options
         options = record.inference_options
@@ -190,23 +189,19 @@ class PredictionDataset(torch.utils.data.Dataset):
             )
 
         # Compute features
-        try:
-            features = self.featurizer.process(
-                tokenized,
-                training=False,
-                max_atoms=None,
-                max_tokens=None,
-                max_seqs=const.max_msa_seqs,
-                pad_to_max_seqs=False,
-                symmetries={},
-                compute_symmetries=False,
-                inference_binder=binder,
-                inference_pocket=pocket,
-                compute_constraint_features=True,
-            )
-        except Exception as e:  # noqa: BLE001
-            print(f"Featurizer failed on {record.id} with error {e}. Skipping.")  # noqa: T201
-            return self.__getitem__(0)
+        features = self.featurizer.process(
+            tokenized,
+            training=False,
+            max_atoms=None,
+            max_tokens=None,
+            max_seqs=const.max_msa_seqs,
+            pad_to_max_seqs=False,
+            symmetries={},
+            compute_symmetries=False,
+            inference_binder=binder,
+            inference_pocket=pocket,
+            compute_constraint_features=True,
+        )
 
         features["record"] = record
         return features

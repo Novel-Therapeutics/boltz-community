@@ -27,9 +27,12 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed chirality constraint computation missing stereo assignment ([#589](https://github.com/jwohlwend/boltz/issues/589))
 - Fixed multi-CCD ligands not dropping leaving atoms ([#631](https://github.com/jwohlwend/boltz/issues/631))
 - Fixed `--preprocessing-threads` overcommitting CPUs ([#564](https://github.com/jwohlwend/boltz/issues/564))
+- Fixed silent wrong-answer bug: inference `__getitem__` no longer substitutes a different record on failure — errors now propagate
+- Fixed potential stack overflow in training/validation data loading via bounded retry (max 10 attempts)
+- Added `--version` flag to CLI
 
 **Tests & CI:**
-- 157 tests: unit tests (CPU), smoke tests (end-to-end inference), and regression tests (golden output verification)
+- 167 tests: unit tests (CPU), smoke tests (end-to-end inference), and regression tests (golden output verification)
 - GitHub Actions CI with CPU runners (every push/PR) and GPU T4 runners (push to main)
 
 ## Contributing

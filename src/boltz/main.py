@@ -32,6 +32,8 @@ from boltz.data.write.writer import BoltzAffinityWriter, BoltzWriter
 from boltz.model.models.boltz1 import Boltz1
 from boltz.model.models.boltz2 import Boltz2
 
+from importlib.metadata import version as _pkg_version
+
 # PyTorch 2.6+ defaults torch.load to weights_only=True, which rejects
 # Lightning checkpoints containing OmegaConf config objects and custom types.
 # Since boltz only loads its own checkpoints from trusted sources, restore
@@ -822,6 +824,7 @@ def process_inputs(
 
 
 @click.group()
+@click.version_option(version=_pkg_version("boltz-community"), prog_name="boltz-community")
 def cli() -> None:
     """Boltz."""
     return

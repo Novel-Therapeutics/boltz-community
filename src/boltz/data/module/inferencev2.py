@@ -211,6 +211,13 @@ class PredictionDataset(torch.utils.data.Dataset):
         Dict[str, Tensor]
             The sampled data features.
 
+        Raises
+        ------
+        Exception
+            If any pipeline stage fails for this record. During inference
+            failures must surface rather than silently returning a different
+            record's results.
+
         """
         # Get record
         record = self.manifest.records[idx]
@@ -227,36 +234,22 @@ class PredictionDataset(torch.utils.data.Dataset):
         )
 
         # Tokenize structure
-        try:
-            tokenized = self.tokenizer.tokenize(input_data)
-        except Exception as e:  # noqa: BLE001
-            print(  # noqa: T201
-                f"Tokenizer failed on {record.id} with error {e}. Skipping."
-            )
-            return self.__getitem__(0)
+        tokenized = self.tokenizer.tokenize(input_data)
 
         if self.affinity:
-            try:
-                tokenized = self.cropper.crop(
-                    tokenized,
-                    max_tokens=256,
-                    max_atoms=2048,
-                )
-            except Exception as e:  # noqa: BLE001
-                print(f"Cropper failed on {record.id} with error {e}. Skipping.")  # noqa: T201
-                return self.__getitem__(0)
+            tokenized = self.cropper.crop(
+                tokenized,
+                max_tokens=256,
+                max_atoms=2048,
+            )
 
         # Load conformers
-        try:
-            molecules = {}
-            molecules.update(self.canonicals)
-            molecules.update(input_data.extra_mols)
-            mol_names = set(tokenized.tokens["res_name"].tolist())
-            mol_names = mol_names - set(molecules.keys())
-            molecules.update(load_molecules(self.mol_dir, mol_names))
-        except Exception as e:  # noqa: BLE001
-            print(f"Molecule loading failed for {record.id} with error {e}. Skipping.")
-            return self.__getitem__(0)
+        molecules = {}
+        molecules.update(self.canonicals)
+        molecules.update(input_data.extra_mols)
+        mol_names = set(tokenized.tokens["res_name"].tolist())
+        mol_names = mol_names - set(molecules.keys())
+        molecules.update(load_molecules(self.mol_dir, mol_names))
 
         # Inference specific options
         options = record.inference_options
@@ -273,30 +266,23 @@ class PredictionDataset(torch.utils.data.Dataset):
         random = np.random.default_rng(seed)
 
         # Compute features
-        try:
-            features = self.featurizer.process(
-                tokenized,
-                molecules=molecules,
-                random=random,
-                training=False,
-                max_atoms=None,
-                max_tokens=None,
-                max_seqs=const.max_msa_seqs,
-                pad_to_max_seqs=False,
-                single_sequence_prop=0.0,
-                compute_frames=True,
-                inference_pocket_constraints=pocket_constraints,
-                inference_contact_constraints=contact_constraints,
-                compute_constraint_features=True,
-                override_method=self.override_method,
-                compute_affinity=self.affinity,
-            )
-        except Exception as e:  # noqa: BLE001
-            import traceback
-
-            traceback.print_exc()
-            print(f"Featurizer failed on {record.id} with error {e}. Skipping.")  # noqa: T201
-            return self.__getitem__(0)
+        features = self.featurizer.process(
+            tokenized,
+            molecules=molecules,
+            random=random,
+            training=False,
+            max_atoms=None,
+            max_tokens=None,
+            max_seqs=const.max_msa_seqs,
+            pad_to_max_seqs=False,
+            single_sequence_prop=0.0,
+            compute_frames=True,
+            inference_pocket_constraints=pocket_constraints,
+            inference_contact_constraints=contact_constraints,
+            compute_constraint_features=True,
+            override_method=self.override_method,
+            compute_affinity=self.affinity,
+        )
 
         # Add record
         features["record"] = record
