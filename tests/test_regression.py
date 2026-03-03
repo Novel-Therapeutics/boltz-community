@@ -49,7 +49,7 @@ class RegressionTester(unittest.TestCase):
             regression_feats_path, map_location=device, weights_only=False,
         )
         model_module: nn.Module = Boltz1.load_from_checkpoint(
-            checkpoint, map_location=device
+            checkpoint, map_location=device, weights_only=False,
         )
         model_module.to(device)
         model_module.eval()
