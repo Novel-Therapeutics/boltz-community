@@ -29,7 +29,6 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed `--preprocessing-threads` overcommitting CPUs ([#564](https://github.com/jwohlwend/boltz/issues/564))
 - Fixed silent wrong-answer bug: inference `__getitem__` no longer substitutes a different record on failure — errors now propagate
 - Fixed potential stack overflow in training/validation data loading via bounded retry (max 10 attempts)
-- Added `--version` flag to CLI
 
 **Tests & CI:**
 - 167 tests: unit tests (CPU), smoke tests (end-to-end inference), and regression tests (golden output verification)

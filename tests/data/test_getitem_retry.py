@@ -53,6 +53,7 @@ def _make_validation_dataset():
 
     ds = ValidationDataset(
         datasets=[dataset],
+        seed=42,
         symmetries={},
         max_atoms=1000,
         max_tokens=None,  # disable cropping
