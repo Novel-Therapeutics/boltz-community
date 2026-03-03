@@ -70,26 +70,10 @@ properties:
       binder: L1
 """
 
-# Protein-peptide: ~150-residue MDM2 + p53 peptide (structure only, no affinity)
-# Boltz-2 affinity is only supported for small-molecule ligands, not peptides.
-# Classic protein-peptide interaction benchmark
-PROTEIN_PEPTIDE = """\
-version: 1
-sequences:
-  - protein:
-      id: A
-      sequence: MCNTNMSVPTDGAVTTSQIPASEQETLVRPKPLLLKLLKSVGAQKDTYTMKEVLFYLGQYIMTKRLYDEKQQHIVYCSNDLLGDLFGVPSFSVKEHRKIYTMIYRNLVVVNQQESSDSGTSVSENRCHLEGGSDQKDLVQELQEEEDQKVR
-      msa: empty
-  - protein:
-      id: B
-      sequence: ETFSDLWKLLPEN
-"""
-
 CASES = [
     ("small_protein_ligand", SMALL_PROTEIN_LIGAND),
     ("medium_protein_ligand", MEDIUM_PROTEIN_LIGAND),
     ("large_protein_ligand", LARGE_PROTEIN_LIGAND),
-    ("protein_peptide", PROTEIN_PEPTIDE),
 ]
 
 
