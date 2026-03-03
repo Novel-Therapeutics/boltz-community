@@ -37,7 +37,7 @@ from boltz.model.models.boltz2 import Boltz2
 # Since boltz only loads its own checkpoints from trusted sources, restore
 # the pre-2.6 default.
 _original_torch_load = torch.load
-torch.load = lambda *a, **kw: _original_torch_load(*a, **dict(kw, weights_only=kw.get("weights_only", False)))
+torch.load = lambda *a, **kw: _original_torch_load(*a, **{**kw, "weights_only": False})
 
 CCD_URL = "https://huggingface.co/boltz-community/boltz-1/resolve/main/ccd.pkl"
 MOL_URL = "https://huggingface.co/boltz-community/boltz-2/resolve/main/mols.tar"
