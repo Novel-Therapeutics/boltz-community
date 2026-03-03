@@ -31,9 +31,10 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed potential stack overflow in training/validation data loading via bounded retry (max 10 attempts)
 - Fixed `boltz predict` exiting silently with code 0 when all inputs fail validation (e.g. requesting affinity for a protein chain)
 - Added `--skip_bad_inputs` flag: by default `boltz predict` now aborts when any input fails processing; pass `--skip_bad_inputs` to skip bad inputs and continue with the rest
+- Deferred heavy imports (torch, rdkit, pytorch-lightning) so `boltz.main` loads instantly for CLI help and input validation
 
 **Tests & CI:**
-- 167 tests: unit tests (CPU), smoke tests (end-to-end inference), and regression tests (golden output verification)
+- 170+ tests: unit tests (CPU), smoke tests (end-to-end inference), and regression tests (golden output verification)
 - GitHub Actions CI with CPU runners (every push/PR) and GPU T4 runners (push to main)
 
 ## Contributing
