@@ -1349,6 +1349,8 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         precision=32 if model == "boltz1" else "bf16-mixed",
     )
 
+    map_location = "cpu" if accelerator == "cpu" else "cuda"
+
     if filtered_manifest.records:
         msg = f"Running structure prediction for {len(filtered_manifest.records)} input"
         msg += "s." if len(filtered_manifest.records) > 1 else "."
@@ -1402,7 +1404,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             checkpoint,
             strict=True,
             predict_args=predict_args,
-            map_location="cpu",
+            map_location=map_location,
             diffusion_process_args=asdict(diffusion_params),
             ema=False,
             use_kernels=not no_kernels,
@@ -1479,7 +1481,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             affinity_checkpoint,
             strict=True,
             predict_args=predict_affinity_args,
-            map_location="cpu",
+            map_location=map_location,
             diffusion_process_args=asdict(diffusion_params),
             ema=False,
             pairformer_args=asdict(pairformer_args),
