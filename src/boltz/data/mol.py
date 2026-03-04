@@ -100,8 +100,9 @@ def get_symmetries(mols: dict[str, Mol]) -> dict:  # noqa: PLR0912
     """
     symmetries = {}
     for key, mol in mols.items():
-        if key in _symmetry_cache:
-            symmetries[key] = _symmetry_cache[key]
+        mol_id = id(mol)
+        if mol_id in _symmetry_cache:
+            symmetries[key] = _symmetry_cache[mol_id]
             continue
         try:
             sym = pickle.loads(bytes.fromhex(mol.GetProp("symmetries")))  # noqa: S301
@@ -193,7 +194,7 @@ def get_symmetries(mols: dict[str, Mol]) -> dict:  # noqa: PLR0912
                 aromatic_6_ring_index,
                 planar_double_bond_index,
             )
-            _symmetry_cache[key] = result
+            _symmetry_cache[mol_id] = result
             symmetries[key] = result
         except Exception as e:  # noqa: BLE001, PERF203, S110
             pass
