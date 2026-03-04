@@ -49,6 +49,7 @@ CASES = [
     ("1000res_struct", 1000, False),
     ("1000res_affinity", 1000, True),
     ("2000res_struct", 2000, False),
+    ("2000res_affinity", 2000, True),
 ]
 
 
