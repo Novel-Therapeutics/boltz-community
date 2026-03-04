@@ -163,4 +163,5 @@ cython_debug/
 
 # Boltz prediction outputs
 #   All result files generated from a boltz prediction call
-boltz_results_*/
+boltz_results_*/.idea/
+.idea/
