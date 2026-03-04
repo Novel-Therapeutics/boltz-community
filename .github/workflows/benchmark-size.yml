@@ -1,0 +1,52 @@
+name: Size Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: 'Optional note (e.g. "testing T4 limits")'
+        required: false
+        default: ''
+
+jobs:
+  benchmark-size:
+    name: Size limit benchmark
+    runs-on: gpu-t4
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[test]"
+
+      - name: Cache model checkpoints
+        uses: actions/cache@v4
+        with:
+          path: ~/.boltz
+          key: boltz-checkpoints-v1
+
+      - name: Run size benchmark
+        run: python tests/benchmark_size.py --out size-results.json
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: size-benchmark-results
+          path: size-results.json
+
+      - name: Post summary
+        if: always()
+        run: |
+          echo "## Size Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ github.event.inputs.note }}" ]; then
+            echo "**Note:** ${{ github.event.inputs.note }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat size-results.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
