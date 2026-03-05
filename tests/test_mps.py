@@ -35,7 +35,7 @@ def _run_boltz_predict(input_yaml, input_filename, tmpdir, extra_args=None):
 
     output_dir = os.path.join(tmpdir, "output")
     cmd = [
-        "boltz", "predict", input_path,
+        "python3", "-m", "boltz", "predict", input_path,
         "--out_dir", output_dir,
         "--accelerator", "mps",
         "--recycling_steps", "1",
