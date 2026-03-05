@@ -4,7 +4,6 @@ import os
 import pickle
 import platform
 import tarfile
-import urllib.request
 import warnings
 from dataclasses import asdict, dataclass
 from functools import partial
@@ -159,6 +158,22 @@ class BoltzSteeringParams:
     num_gd_steps: int = 20
 
 
+def _download(url: str, dest: str) -> None:
+    """Download a file with proper redirect handling.
+
+    Uses requests instead of urllib to handle HuggingFace redirects
+    and to use certifi SSL certificates (avoids macOS SSL errors).
+    """
+    import requests
+
+    response = requests.get(url, stream=True, allow_redirects=True, timeout=300)
+    response.raise_for_status()
+    with open(dest, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+
+
 @rank_zero_only
 def download_boltz1(cache: Path) -> None:
     """Download all the required data.
@@ -176,8 +191,7 @@ def download_boltz1(cache: Path) -> None:
             f"Downloading the CCD dictionary to {ccd}. You may "
             "change the cache directory with the --cache flag."
         )
-        urllib.request.urlretrieve(CCD_URL, str(ccd))  # noqa: S310
-
+        _download(CCD_URL, str(ccd))
     # Download model
     model = cache / "boltz1_conf.ckpt"
     if not model.exists():
@@ -187,7 +201,7 @@ def download_boltz1(cache: Path) -> None:
         )
         for i, url in enumerate(BOLTZ1_URL_WITH_FALLBACK):
             try:
-                urllib.request.urlretrieve(url, str(model))  # noqa: S310
+                _download(url, str(model))
                 break
             except Exception as e:  # noqa: BLE001
                 if i == len(BOLTZ1_URL_WITH_FALLBACK) - 1:
@@ -216,7 +230,7 @@ def download_boltz2(cache: Path) -> None:
                 "This may take a bit of time. You may change the cache directory "
                 "with the --cache flag."
             )
-            urllib.request.urlretrieve(MOL_URL, str(tar_mols))  # noqa: S310
+            _download(MOL_URL, str(tar_mols))
         click.echo(
             f"Extracting the CCD data to {mols}. "
             "This may take a bit of time. You may change the cache directory "
@@ -234,7 +248,7 @@ def download_boltz2(cache: Path) -> None:
         )
         for i, url in enumerate(BOLTZ2_URL_WITH_FALLBACK):
             try:
-                urllib.request.urlretrieve(url, str(model))  # noqa: S310
+                _download(url, str(model))
                 break
             except Exception as e:  # noqa: BLE001
                 if i == len(BOLTZ2_URL_WITH_FALLBACK) - 1:
@@ -251,7 +265,7 @@ def download_boltz2(cache: Path) -> None:
         )
         for i, url in enumerate(BOLTZ2_AFFINITY_URL_WITH_FALLBACK):
             try:
-                urllib.request.urlretrieve(url, str(affinity_model))  # noqa: S310
+                _download(url, str(affinity_model))
                 break
             except Exception as e:  # noqa: BLE001
                 if i == len(BOLTZ2_AFFINITY_URL_WITH_FALLBACK) - 1:
