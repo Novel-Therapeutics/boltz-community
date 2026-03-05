@@ -2,6 +2,7 @@ import torch
 from torch import nn
 
 from boltz.data import const
+from boltz.model.modules.utils import autocast_device_type
 
 
 def compute_collinear_mask(v1, v2):
@@ -23,7 +24,7 @@ def compute_frame_pred(
     resolved_mask=None,
     inference=False,
 ):
-    with torch.amp.autocast("cuda", enabled=False):
+    with torch.amp.autocast(autocast_device_type(pred_atom_coords.device.type), enabled=False):
         asym_id_token = feats["asym_id"]
         asym_id_atom = torch.bmm(
             feats["atom_to_token"].float(), asym_id_token.unsqueeze(-1).float()

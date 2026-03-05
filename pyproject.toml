@@ -90,4 +90,5 @@ convention = "numpy"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "regression",
+    "mps: requires Apple Silicon with MPS (run manually with '-m mps')",
 ]

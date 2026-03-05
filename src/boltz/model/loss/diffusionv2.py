@@ -44,7 +44,8 @@ def weighted_rigid_align(
         "... n i, ... n j -> ... i j",
     )
 
-    # Compute the SVD of the covariance matrix, required float32 for svd and determinant
+    # Compute the SVD of the covariance matrix, required float32 for svd and determinant.
+    # .is_cuda is False on MPS, so the default driver is used (correct for both CPU and MPS).
     original_dtype = cov_matrix.dtype
     cov_matrix_32 = cov_matrix.to(dtype=torch.float32)
 

@@ -21,6 +21,7 @@ from einops import rearrange
 from torch import nn
 
 from boltz.model.layers import initialize
+from boltz.model.modules.utils import autocast_device_type
 from boltz.model.layers.triangular_attention.utils import (
     flatten_final_dims,
     permute_final_dims,
@@ -103,7 +104,7 @@ class Linear(nn.Linear):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         d = input.dtype
         if self.precision is not None:
-            with torch.autocast("cuda", enabled=False):
+            with torch.autocast(autocast_device_type(input.device.type), enabled=False):
                 bias = (
                     self.bias.to(dtype=self.precision)
                     if self.bias is not None
@@ -116,7 +117,7 @@ class Linear(nn.Linear):
                 ).to(dtype=d)
 
         if d is torch.bfloat16:
-            with torch.autocast("cuda", enabled=False):
+            with torch.autocast(autocast_device_type(input.device.type), enabled=False):
                 bias = self.bias.to(dtype=d) if self.bias is not None else None
                 return nn.functional.linear(input, self.weight.to(dtype=d), bias)
 
@@ -136,7 +137,7 @@ class LayerNorm(nn.Module):
     def forward(self, x):
         d = x.dtype
         if d is torch.bfloat16:
-            with torch.autocast("cuda", enabled=False):
+            with torch.autocast(autocast_device_type(x.device.type), enabled=False):
                 out = nn.functional.layer_norm(
                     x,
                     self.c_in,
@@ -164,7 +165,7 @@ def softmax_no_cast(t: torch.Tensor, dim: int = -1) -> torch.Tensor:
     """
     d = t.dtype
     if d is torch.bfloat16:
-        with torch.autocast("cuda", enabled=False):
+        with torch.autocast(autocast_device_type(t.device.type), enabled=False):
             s = torch.nn.functional.softmax(t, dim=dim)
     else:
         s = torch.nn.functional.softmax(t, dim=dim)

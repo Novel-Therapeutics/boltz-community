@@ -319,6 +319,7 @@ class Boltz2InferenceDataModule(pl.LightningDataModule):
         extra_mols_dir: Optional[Path] = None,
         override_method: Optional[str] = None,
         affinity: bool = False,
+        pin_memory: bool = True,
     ) -> None:
         """Initialize the DataModule.
 
@@ -342,6 +343,8 @@ class Boltz2InferenceDataModule(pl.LightningDataModule):
             The path to the extra molecules directory.
         override_method : Optional[str]
             The method to override.
+        pin_memory : bool
+            Whether to use pinned memory for DataLoader.
 
         """
         super().__init__()
@@ -355,6 +358,7 @@ class Boltz2InferenceDataModule(pl.LightningDataModule):
         self.extra_mols_dir = extra_mols_dir
         self.override_method = override_method
         self.affinity = affinity
+        self.pin_memory = pin_memory
 
     def predict_dataloader(self) -> DataLoader:
         """Get the training dataloader.
@@ -380,7 +384,7 @@ class Boltz2InferenceDataModule(pl.LightningDataModule):
             dataset,
             batch_size=1,
             num_workers=self.num_workers,
-            pin_memory=True,
+            pin_memory=self.pin_memory,
             shuffle=False,
             collate_fn=collate,
         )

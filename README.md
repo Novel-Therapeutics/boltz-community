@@ -65,6 +65,16 @@ pip install "boltz-community[cuda] @ git+https://github.com/Novel-Therapeutics/b
 
 If you are installing on CPU-only or non-CUDA GPU hardware, use the first command without `[cuda]`. Note that the CPU version is significantly slower than the GPU version.
 
+### Apple Silicon (MPS)
+
+On Macs with Apple Silicon (M1/M2/M3/M4), you can run inference on the GPU via MPS:
+
+```
+boltz predict input.yaml --accelerator mps --use_msa_server
+```
+
+MPS mode automatically uses float32 precision and single-device execution. Performance is slower than CUDA but significantly faster than CPU.
+
 ---
 
 *Everything below is from the upstream Boltz README.*

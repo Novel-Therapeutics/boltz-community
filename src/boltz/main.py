@@ -891,7 +891,7 @@ def cli() -> None:
 )
 @click.option(
     "--accelerator",
-    type=click.Choice(["gpu", "cpu", "tpu"]),
+    type=click.Choice(["gpu", "cpu", "tpu", "mps"]),
     help="The accelerator to use for prediction. Default is gpu.",
     default="gpu",
 )
@@ -1164,6 +1164,16 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         msg = "Running on CPU, this will be slow. Consider using a GPU."
         click.echo(msg)
 
+    # MPS (Apple Silicon) validation and info
+    if accelerator == "mps":
+        if not torch.backends.mps.is_available():
+            msg = (
+                "MPS accelerator requested but not available. "
+                "MPS requires macOS 12.3+ on Apple Silicon."
+            )
+            raise click.UsageError(msg)
+        click.echo("Running on Apple Silicon GPU (MPS).")
+
     # Supress some lightning warnings
     warnings.filterwarnings(
         "ignore", ".*that has Tensor Cores. To properly utilize them.*"
@@ -1296,7 +1306,15 @@ def predict(  # noqa: C901, PLR0915, PLR0912
 
     # Set up trainer
     strategy = "auto"
-    if (isinstance(devices, int) and devices > 1) or (
+    if accelerator == "mps":
+        # MPS only supports single-device, float32
+        if (isinstance(devices, int) and devices > 1) or (
+            isinstance(devices, list) and len(devices) > 1
+        ):
+            click.echo("Warning: MPS only supports a single device, ignoring --devices.")
+        devices = 1
+        strategy = "auto"
+    elif (isinstance(devices, int) and devices > 1) or (
         isinstance(devices, list) and len(devices) > 1
     ):
         start_method = "fork" if platform.system() != "win32" and platform.system() != "Windows" else "spawn"
@@ -1339,6 +1357,14 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         write_embeddings=write_embeddings,
     )
 
+    # MPS does not support bf16-mixed
+    if accelerator == "mps":
+        precision = 32
+    elif model == "boltz1":
+        precision = 32
+    else:
+        precision = "bf16-mixed"
+
     # Set up trainer
     trainer = Trainer(
         default_root_dir=out_dir,
@@ -1346,10 +1372,17 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         callbacks=[pred_writer],
         accelerator=accelerator,
         devices=devices,
-        precision=32 if model == "boltz1" else "bf16-mixed",
+        precision=precision,
     )
 
-    map_location = "cpu" if accelerator == "cpu" else "cuda"
+    if accelerator == "cpu":
+        map_location = "cpu"
+    elif accelerator == "mps":
+        map_location = "mps"
+    else:
+        map_location = "cuda"
+
+    pin_memory = accelerator not in ("cpu", "mps")
 
     if filtered_manifest.records:
         msg = f"Running structure prediction for {len(filtered_manifest.records)} input"
@@ -1368,6 +1401,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
                 template_dir=processed.template_dir,
                 extra_mols_dir=processed.extra_mols_dir,
                 override_method=method,
+                pin_memory=pin_memory,
             )
         else:
             data_module = BoltzInferenceDataModule(
@@ -1376,6 +1410,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
                 msa_dir=processed.msa_dir,
                 num_workers=num_workers,
                 constraints_dir=processed.constraints_dir,
+                pin_memory=pin_memory,
             )
 
         # Load model
@@ -1456,6 +1491,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             extra_mols_dir=processed.extra_mols_dir,
             override_method="other",
             affinity=True,
+            pin_memory=pin_memory,
         )
 
         predict_affinity_args = {

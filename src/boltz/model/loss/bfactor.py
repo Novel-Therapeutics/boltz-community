@@ -1,6 +1,8 @@
 import torch
 from torch import Tensor
 
+from boltz.model.modules.utils import autocast_device_type
+
 
 def bfactor_loss_fn(
     output: dict[str, Tensor],
@@ -21,7 +23,7 @@ def bfactor_loss_fn(
         The globally averaged loss.
 
     """
-    with torch.autocast("cuda", enabled=False):
+    with torch.autocast(autocast_device_type(output["pbfactor"].device.type), enabled=False):
         # Get predicted distograms
         pred = output["pbfactor"].float()  # (B, L, bins)
         bins = pred.shape[2]  # num_bins
