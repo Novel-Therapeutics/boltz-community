@@ -1,6 +1,7 @@
 import gzip
 from pathlib import Path
 from typing import Optional, TextIO
+from zlib import crc32
 
 import numpy as np
 
@@ -42,14 +43,23 @@ def _parse_a3m(  # noqa: C901
         if not line or line.startswith("#"):
             continue
 
-        # Get taxonomy, if annotated
+        # Get taxonomy / pairing key
         if line.startswith(">"):
             header = line.split()[0]
             if taxonomy and header.startswith(">UniRef100"):
+                # Use taxonomy database lookup (training path)
                 uniref_id = header.split("_")[1]
                 taxonomy_id = taxonomy.get(uniref_id)
                 if taxonomy_id is None:
                     taxonomy_id = -1
+            elif not taxonomy and header.startswith(">UniRef"):
+                # No taxonomy database — derive a pairing key from the
+                # UniRef ID so that sequences from the same cluster in
+                # different chains get paired.  Use a deterministic hash
+                # mapped to a positive int32 (avoiding -1 = unpaired and
+                # 0 = reserved for the query).
+                uniref_id = header.lstrip(">").split()[0]
+                taxonomy_id = (crc32(uniref_id.encode()) % (2**31 - 2)) + 1
             else:
                 taxonomy_id = -1
             continue
