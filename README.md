@@ -75,6 +75,17 @@ boltz predict input.yaml --accelerator mps --use_msa_server
 
 MPS mode automatically uses float32 precision and single-device execution. Performance is slower than CUDA but significantly faster than CPU.
 
+Early benchmark on an M3 MacBook Air (single data point — community testing welcome):
+
+| Case | T4 GPU (bf16) | M3 Air MPS (f32) | Ratio |
+|------|---------------|-------------------|-------|
+| 10-res peptide + ligand (affinity) | 107s | 114s | 1.1x |
+| 163-res protein + ligand (affinity) | 144s | 251s | 1.7x |
+| 260-res protein + ligand (affinity) | 193s | 383s | 2.0x |
+| 163-res protein (structure only) | 57s | 74s | 1.3x |
+
+The gap grows with protein size, likely due to attention layers scaling quadratically without bf16. If you run benchmarks on other Apple Silicon chips, please share your results in an issue!
+
 ---
 
 *Everything below is from the upstream Boltz README.*
