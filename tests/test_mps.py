@@ -49,7 +49,7 @@ def _run_boltz_predict(input_yaml, input_filename, tmpdir, extra_args=None):
         cmd,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=1200,
     )
 
     stem = os.path.splitext(input_filename)[0]
