@@ -13,7 +13,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Compatible with PyTorch 2.6+ and Lightning 2.6+
 
 **Bug fixes:**
-- Cherry-picked community PRs: [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#488](https://github.com/jwohlwend/boltz/pull/488), [#363](https://github.com/jwohlwend/boltz/pull/363)
+- Cherry-picked community PRs: [#654](https://github.com/jwohlwend/boltz/pull/654), [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#576](https://github.com/jwohlwend/boltz/pull/576), [#538](https://github.com/jwohlwend/boltz/pull/538), [#488](https://github.com/jwohlwend/boltz/pull/488), [#363](https://github.com/jwohlwend/boltz/pull/363)
 - Fixed broken v1 attention code path in `PairformerLayer` ([#602](https://github.com/jwohlwend/boltz/pull/602))
 - Fixed SIGSEGV crash on ligands with invalid implicit valence ([#649](https://github.com/jwohlwend/boltz/issues/649))
 - Fixed `--subsample_msa` defaulting to False instead of True ([#628](https://github.com/jwohlwend/boltz/issues/628))
@@ -31,6 +31,9 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed silent wrong-answer bug: inference `__getitem__` no longer substitutes a different record on failure — errors now propagate
 - Fixed potential stack overflow in training/validation data loading via bounded retry (max 10 attempts)
 - Fixed `boltz predict` exiting silently with code 0 when all inputs fail validation (e.g. requesting affinity for a protein chain)
+- Fixed MSA pairing keys lost when loading cached A3M files ([#627](https://github.com/jwohlwend/boltz/issues/627))
+- Fixed consecutive CA filter rejecting valid protein chains containing metal ions ([#576](https://github.com/jwohlwend/boltz/pull/576))
+- Fixed template alignment forcing gapless matches, breaking templates with indels ([#538](https://github.com/jwohlwend/boltz/pull/538))
 
 **Improvements:**
 - Added `--skip_bad_inputs` flag: by default `boltz predict` now aborts when any input fails processing; pass `--skip_bad_inputs` to skip bad inputs and continue with the rest
@@ -40,7 +43,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Model weights now load directly to GPU instead of CPU-then-transfer
 - Cached molecule file reads and symmetry deserialization across samples
 - Removed dead O(n_tokens × n_chains) loop in pocket distance computation
-- Tensors in diffusion sampling loop now allocated directly on GPU
+- Tensors across model modules now allocated directly on device instead of CPU-then-transfer ([#654](https://github.com/jwohlwend/boltz/pull/654))
 
 **Tests & CI:**
 - 170+ tests: unit tests (CPU), smoke tests (end-to-end inference), and regression tests (golden output verification)
