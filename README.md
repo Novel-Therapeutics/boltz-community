@@ -36,6 +36,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed template alignment forcing gapless matches, breaking templates with indels ([#538](https://github.com/jwohlwend/boltz/pull/538))
 - Fixed relative MSA paths resolved from CWD instead of input file directory ([#500](https://github.com/jwohlwend/boltz/pull/500))
 - Fixed affinity prediction crashing when structure prediction fails (e.g. covalent ligands, OOM) — now skips affected records with a warning ([#620](https://github.com/jwohlwend/boltz/issues/620), [#624](https://github.com/jwohlwend/boltz/issues/624))
+- Fixed Boltz-2 checkpoint loading crash due to extra `mse_rotational_alignment` kwarg ([#644](https://github.com/jwohlwend/boltz/issues/644))
 
 **Improvements:**
 - Added `--skip_bad_inputs` flag: by default `boltz predict` now aborts when any input fails processing; pass `--skip_bad_inputs` to skip bad inputs and continue with the rest
@@ -48,7 +49,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Tensors across model modules now allocated directly on device instead of CPU-then-transfer ([#654](https://github.com/jwohlwend/boltz/pull/654))
 
 **Tests & CI:**
-- 170+ tests: unit tests (CPU), smoke tests (end-to-end inference), and regression tests (golden output verification)
+- 170+ tests: unit tests (CPU), smoke tests (end-to-end inference), regression tests (golden output verification for Boltz-1 and Boltz-2), and determinism tests (seed reproducibility)
 - GitHub Actions CI with CPU runners (every push/PR) and GPU T4 runners (push to main)
 
 ## Contributing
