@@ -24,7 +24,16 @@ import concurrent.futures
 import subprocess
 from pathlib import Path
 
-from tqdm import tqdm
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(total=0, **_):
+        """Minimal fallback when tqdm is not installed."""
+        class _Dummy:
+            def update(self, n=1): pass
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+        return _Dummy()
 
 
 # --- Docker commands (fallback) -----------------------------------------------
