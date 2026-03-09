@@ -176,7 +176,7 @@ download_data() {
 
     info "Extracting..."
     cd "${BENCH_DIR}/data"
-    unzip -q -o "${ARCHIVE}"
+    python3 -c "import zipfile; zipfile.ZipFile('${ARCHIVE}').extractall()"
     ok "Eval data ready at ${BENCH_DIR}/data/boltz_results_final/"
 
     # Show what we got
