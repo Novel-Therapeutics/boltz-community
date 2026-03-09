@@ -32,8 +32,9 @@ BENCH_DIR="${BENCH_DIR:-$HOME/boltz-benchmark}"
 CONDA_ENV="${CONDA_ENV:-boltz-bench}"
 REPO_URL="https://github.com/Novel-Therapeutics/boltz-community.git"
 EVAL_DATA_ID="1JvHlYUMINOaqPTunI9wBYrfYniKgVmxf"  # Google Drive file ID
-OST_IMAGE="registry.scicore.unibas.ch/schwede/openstructure:2.8.0"
 OST_TAG="openstructure-0.2.8"
+OST_GIT_URL="https://git.scicore.unibas.ch/schwede/openstructure.git"
+OST_GIT_TAG="2.8.0"
 
 # Prediction parameters (matching Boltz-1 paper)
 RECYCLING_STEPS=10
@@ -140,14 +141,20 @@ setup_env() {
         pip install gdown
     fi
 
-    # Pull OpenStructure Docker image
-    info "Pulling OpenStructure Docker image (this may take a while)..."
+    # Build OpenStructure Docker image from source
+    # No pre-built image exists on the registry for v2.8.0 — we build from the Dockerfile
+    info "Building OpenStructure Docker image (this may take 10-20 min on first run)..."
     if docker image inspect "${OST_TAG}" &>/dev/null; then
         ok "OpenStructure image already available"
     else
-        docker pull "${OST_IMAGE}"
-        docker tag "${OST_IMAGE}" "${OST_TAG}"
-        ok "OpenStructure image ready"
+        OST_BUILD_DIR="${BENCH_DIR}/openstructure-docker"
+        if [ ! -d "${OST_BUILD_DIR}" ]; then
+            info "Cloning OpenStructure ${OST_GIT_TAG}..."
+            git clone --depth 1 --branch "${OST_GIT_TAG}" "${OST_GIT_URL}" "${OST_BUILD_DIR}"
+        fi
+        info "Building Docker image (tag: ${OST_TAG})..."
+        docker build -t "${OST_TAG}" "${OST_BUILD_DIR}/docker"
+        ok "OpenStructure image built and tagged as ${OST_TAG}"
     fi
 
     ok "Setup complete!"
