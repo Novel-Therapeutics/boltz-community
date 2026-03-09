@@ -221,37 +221,55 @@ run_pilot() {
 
     _check_triton
 
-    # Select a subset of targets for the pilot
+    # Prepare pilot inputs from eval data
     PILOT_DIR="${BENCH_DIR}/data/pilot_inputs"
-    mkdir -p "${PILOT_DIR}"
 
-    # Use the Boltz input files from the eval data
+    # The eval data has: inputs/test/boltz/{queries/*.yaml, msa/*.csv}
+    # The YAML files contain hardcoded MSA paths from the Boltz team's server.
+    # We rewrite them to point to the local msa/ directory.
     INPUT_DIR="${EVAL_DATA}/inputs/test/boltz"
-    if [ ! -d "${INPUT_DIR}" ]; then
-        err "Boltz input files not found at ${INPUT_DIR}"
-        info "Available input dirs:"
-        ls "${EVAL_DATA}/inputs/test/" 2>/dev/null || echo "  (none)"
+    if [ ! -d "${INPUT_DIR}/queries" ]; then
+        err "Boltz input files not found at ${INPUT_DIR}/queries"
+        info "Available contents:"
+        ls "${INPUT_DIR}/" 2>/dev/null || echo "  (none)"
         exit 1
     fi
 
-    # Copy first N inputs for the pilot
-    info "Selecting ${PILOT_N} targets for pilot..."
-    ls "${INPUT_DIR}" | head -n "${PILOT_N}" | while read -r f; do
-        cp -r "${INPUT_DIR}/${f}" "${PILOT_DIR}/" 2>/dev/null || true
-    done
+    if [ ! -d "${PILOT_DIR}/queries" ]; then
+        info "Preparing pilot inputs (${PILOT_N} targets)..."
+        mkdir -p "${PILOT_DIR}/queries" "${PILOT_DIR}/msa"
 
-    ACTUAL_N=$(ls "${PILOT_DIR}" | wc -l)
+        # Select first N YAML files
+        SELECTED=$(ls "${INPUT_DIR}/queries/" | head -n "${PILOT_N}")
+
+        for YAML_FILE in ${SELECTED}; do
+            STEM="${YAML_FILE%.yaml}"
+
+            # Copy YAML and rewrite MSA paths to point to local msa/ directory
+            sed "s|/data/rbg/users/[^ ]*/msa/|../msa/|g" \
+                "${INPUT_DIR}/queries/${YAML_FILE}" > "${PILOT_DIR}/queries/${YAML_FILE}"
+
+            # Copy corresponding MSA files
+            for MSA_FILE in "${INPUT_DIR}"/msa/${STEM}*; do
+                [ -f "${MSA_FILE}" ] && cp "${MSA_FILE}" "${PILOT_DIR}/msa/"
+            done
+        done
+        ok "Prepared ${PILOT_N} pilot inputs with local MSA paths"
+    else
+        info "Pilot inputs already prepared"
+    fi
+
+    ACTUAL_N=$(ls "${PILOT_DIR}/queries/" | wc -l)
     info "Running predictions on ${ACTUAL_N} targets..."
 
     # Run Boltz-2 (default model)
     info "=== Boltz-2 predictions ==="
-    _run_boltz boltz predict "${PILOT_DIR}" \
+    _run_boltz boltz predict "${PILOT_DIR}/queries" \
         --out_dir "${BENCH_DIR}/results/pilot_boltz2" \
         --recycling_steps "${RECYCLING_STEPS}" \
         --sampling_steps "${SAMPLING_STEPS}" \
         --diffusion_samples "${DIFFUSION_SAMPLES}" \
         --seed "${SEED}" \
-        --use_msa_server \
         --skip_bad_inputs \
         2>&1 | tee "${BENCH_DIR}/results/pilot_boltz2.log"
 
@@ -259,13 +277,12 @@ run_pilot() {
 
     # Run Boltz-1
     info "=== Boltz-1 predictions ==="
-    _run_boltz boltz predict "${PILOT_DIR}" \
+    _run_boltz boltz predict "${PILOT_DIR}/queries" \
         --out_dir "${BENCH_DIR}/results/pilot_boltz1" \
         --recycling_steps "${RECYCLING_STEPS}" \
         --sampling_steps "${SAMPLING_STEPS}" \
         --diffusion_samples "${DIFFUSION_SAMPLES}" \
         --seed "${SEED}" \
-        --use_msa_server \
         --skip_bad_inputs \
         --model boltz1 \
         2>&1 | tee "${BENCH_DIR}/results/pilot_boltz1.log"
@@ -280,6 +297,42 @@ run_pilot() {
     info "Next: bash scripts/eval/setup_benchmark.sh evaluate pilot"
 }
 
+_prepare_inputs() {
+    # Prepare inputs for a dataset by rewriting MSA paths to local paths
+    local SRC_DIR="$1"
+    local DST_DIR="$2"
+
+    if [ -d "${DST_DIR}/queries" ]; then
+        info "Inputs already prepared at ${DST_DIR}"
+        return
+    fi
+
+    if [ ! -d "${SRC_DIR}/queries" ]; then
+        err "Source queries not found at ${SRC_DIR}/queries"
+        return 1
+    fi
+
+    mkdir -p "${DST_DIR}/queries" "${DST_DIR}/msa"
+
+    info "Rewriting MSA paths for $(ls "${SRC_DIR}/queries/" | wc -l) inputs..."
+
+    for YAML_FILE in "${SRC_DIR}"/queries/*.yaml; do
+        BASENAME=$(basename "${YAML_FILE}")
+        STEM="${BASENAME%.yaml}"
+
+        # Rewrite MSA paths to relative ../msa/ paths
+        sed "s|/data/rbg/users/[^ ]*/msa/|../msa/|g" \
+            "${YAML_FILE}" > "${DST_DIR}/queries/${BASENAME}"
+
+        # Copy corresponding MSA files
+        for MSA_FILE in "${SRC_DIR}"/msa/${STEM}*; do
+            [ -f "${MSA_FILE}" ] && cp "${MSA_FILE}" "${DST_DIR}/msa/"
+        done
+    done
+
+    ok "Prepared inputs at ${DST_DIR}"
+}
+
 run_full() {
     info "Running FULL benchmark (this will take many hours)..."
 
@@ -291,20 +344,18 @@ run_full() {
 
     _check_triton
 
-    INPUT_DIR="${EVAL_DATA}/inputs/test/boltz"
-
     for MODEL in boltz2 boltz1; do
         for DATASET in test casp15; do
-            if [ "${DATASET}" = "casp15" ]; then
-                DS_INPUT="${EVAL_DATA}/inputs/casp15/boltz"
-            else
-                DS_INPUT="${INPUT_DIR}"
-            fi
+            SRC_INPUT="${EVAL_DATA}/inputs/${DATASET}/boltz"
+            PREPARED_INPUT="${BENCH_DIR}/data/full_inputs_${DATASET}"
 
-            if [ ! -d "${DS_INPUT}" ]; then
-                warn "Input dir not found: ${DS_INPUT}, skipping ${DATASET}"
+            if [ ! -d "${SRC_INPUT}/queries" ]; then
+                warn "Input dir not found: ${SRC_INPUT}/queries, skipping ${DATASET}"
                 continue
             fi
+
+            # Prepare inputs with local MSA paths
+            _prepare_inputs "${SRC_INPUT}" "${PREPARED_INPUT}"
 
             RESULT_DIR="${BENCH_DIR}/results/full_${MODEL}_${DATASET}"
 
@@ -314,7 +365,7 @@ run_full() {
                 continue
             fi
 
-            N_INPUTS=$(ls "${DS_INPUT}" | wc -l)
+            N_INPUTS=$(ls "${PREPARED_INPUT}/queries/" | wc -l)
             info "=== ${MODEL} on ${DATASET} (${N_INPUTS} targets) ==="
 
             MODEL_FLAG=""
@@ -322,13 +373,12 @@ run_full() {
                 MODEL_FLAG="--model boltz1"
             fi
 
-            _run_boltz boltz predict "${DS_INPUT}" \
+            _run_boltz boltz predict "${PREPARED_INPUT}/queries" \
                 --out_dir "${RESULT_DIR}" \
                 --recycling_steps "${RECYCLING_STEPS}" \
                 --sampling_steps "${SAMPLING_STEPS}" \
                 --diffusion_samples "${DIFFUSION_SAMPLES}" \
                 --seed "${SEED}" \
-                --use_msa_server \
                 --skip_bad_inputs \
                 ${MODEL_FLAG} \
                 2>&1 | tee "${RESULT_DIR}.log"
