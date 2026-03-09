@@ -1,12 +1,22 @@
 """Run OpenStructure evaluation on Boltz predictions.
 
 Evaluates Boltz-1 or Boltz-2 predictions against reference structures using
-OpenStructure v2.8.0 Docker image. Works with any number of samples.
+OpenStructure's compare-structures and compare-ligand-structures commands.
+
+Supports two modes:
+  - conda: calls `ost` directly (default, requires openstructure conda env)
+  - docker: runs via Docker container (fallback)
 
 Usage:
+    # Via conda (recommended — run inside the ost-eval conda env)
     python scripts/eval/run_boltz_eval.py \
         predictions/ targets/ evals/ \
-        --mount /data --num-samples 5
+        --num-samples 5
+
+    # Via Docker (if you have the image built)
+    python scripts/eval/run_boltz_eval.py \
+        predictions/ targets/ evals/ \
+        --mode docker --mount /data --num-samples 5
 """
 
 import argparse
@@ -17,9 +27,11 @@ from pathlib import Path
 from tqdm import tqdm
 
 
-OST_COMPARE_STRUCTURE = r"""
+# --- Docker commands (fallback) -----------------------------------------------
+
+DOCKER_COMPARE_STRUCTURE = r"""
 #!/bin/bash
-IMAGE_NAME=openstructure-0.2.8
+IMAGE_NAME={image}
 
 command="compare-structures \
 -m {model_file} \
@@ -34,9 +46,9 @@ command="compare-structures \
 docker run -u $(id -u):$(id -g) --rm --volume {mount}:{mount} $IMAGE_NAME $command
 """
 
-OST_COMPARE_LIGAND = r"""
+DOCKER_COMPARE_LIGAND = r"""
 #!/bin/bash
-IMAGE_NAME=openstructure-0.2.8
+IMAGE_NAME={image}
 
 command="compare-ligand-structures \
 -m {model_file} \
@@ -50,53 +62,77 @@ docker run -u $(id -u):$(id -g) --rm --volume {mount}:{mount} $IMAGE_NAME $comma
 """
 
 
-def evaluate_structure(
-    name: str,
-    pred: str,
-    reference: str,
-    outdir: str,
-    mount: str,
-    executable: str = "/bin/bash",
+def evaluate_structure_docker(
+    name: str, pred: str, reference: str, outdir: str,
+    mount: str, image: str, executable: str = "/bin/bash",
 ) -> None:
-    """Evaluate a single prediction against reference."""
-    # Polymer metrics
+    """Evaluate using Docker."""
     out_path = Path(outdir) / f"{name}.json"
     if not out_path.exists():
         subprocess.run(
-            OST_COMPARE_STRUCTURE.format(
-                model_file=pred,
-                reference_file=reference,
-                output_path=str(out_path),
-                mount=mount,
+            DOCKER_COMPARE_STRUCTURE.format(
+                model_file=pred, reference_file=reference,
+                output_path=str(out_path), mount=mount, image=image,
             ),
-            shell=True,  # noqa: S602
-            check=False,
-            executable=executable,
-            capture_output=True,
+            shell=True, check=False, executable=executable, capture_output=True,
         )
+
+    out_path = Path(outdir) / f"{name}_ligand.json"
+    if not out_path.exists():
+        subprocess.run(
+            DOCKER_COMPARE_LIGAND.format(
+                model_file=pred, reference_file=reference,
+                output_path=str(out_path), mount=mount, image=image,
+            ),
+            shell=True, check=False, executable=executable, capture_output=True,
+        )
+
+
+# --- Conda/direct commands (recommended) -------------------------------------
+
+def evaluate_structure_conda(
+    name: str, pred: str, reference: str, outdir: str,
+) -> None:
+    """Evaluate using ost CLI directly (conda install)."""
+    # Polymer metrics
+    out_path = Path(outdir) / f"{name}.json"
+    if not out_path.exists():
+        cmd = [
+            "ost", "compare-structures",
+            "-m", pred,
+            "-r", reference,
+            "--fault-tolerant",
+            "--min-pep-length", "4",
+            "--min-nuc-length", "4",
+            "-o", str(out_path),
+            "--lddt", "--bb-lddt", "--qs-score", "--dockq",
+            "--ics", "--ips", "--rigid-scores", "--patch-scores", "--tm-score",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0 and not out_path.exists():
+            print(f"  Warning: compare-structures failed for {name}: {result.stderr[-200:]}")
 
     # Ligand metrics
     out_path = Path(outdir) / f"{name}_ligand.json"
     if not out_path.exists():
-        subprocess.run(
-            OST_COMPARE_LIGAND.format(
-                model_file=pred,
-                reference_file=reference,
-                output_path=str(out_path),
-                mount=mount,
-            ),
-            shell=True,  # noqa: S602
-            check=False,
-            executable=executable,
-            capture_output=True,
-        )
+        cmd = [
+            "ost", "compare-ligand-structures",
+            "-m", pred,
+            "-r", reference,
+            "--fault-tolerant",
+            "--lddt-pli", "--rmsd",
+            "--substructure-match",
+            "-o", str(out_path),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0 and not out_path.exists():
+            print(f"  Warning: compare-ligand-structures failed for {name}: {result.stderr[-200:]}")
 
 
 def find_predictions(pred_dir: Path, target_name: str, num_samples: int) -> list[Path]:
-    """Find prediction CIF files for a given target, trying common naming patterns."""
+    """Find prediction CIF files for a given target."""
     results = []
     for model_idx in range(num_samples):
-        # Try Boltz naming: {name}_model_{idx}.cif
         candidates = [
             pred_dir / target_name / f"{target_name}_model_{model_idx}.cif",
             pred_dir / target_name.lower() / f"{target_name.lower()}_model_{model_idx}.cif",
@@ -130,14 +166,21 @@ def main():
     parser.add_argument("predictions", type=Path, help="Directory with Boltz predictions")
     parser.add_argument("references", type=Path, help="Directory with reference CIF files")
     parser.add_argument("outdir", type=Path, help="Output directory for eval JSONs")
-    parser.add_argument("--mount", type=str, required=True,
-                        help="Docker mount path (common parent of all paths)")
+    parser.add_argument("--mode", choices=["conda", "docker"], default="conda",
+                        help="How to run OpenStructure (default: conda)")
+    parser.add_argument("--mount", type=str, default=None,
+                        help="Docker mount path (required for --mode docker)")
+    parser.add_argument("--docker-image", type=str, default="openstructure-0.2.8",
+                        help="Docker image name (for --mode docker)")
     parser.add_argument("--num-samples", type=int, default=5,
                         help="Number of diffusion samples per target")
-    parser.add_argument("--max-workers", type=int, default=16,
-                        help="Max parallel Docker evaluations")
+    parser.add_argument("--max-workers", type=int, default=8,
+                        help="Max parallel evaluations")
     parser.add_argument("--executable", type=str, default="/bin/bash")
     args = parser.parse_args()
+
+    if args.mode == "docker" and not args.mount:
+        parser.error("--mount is required when using --mode docker")
 
     args.outdir.mkdir(parents=True, exist_ok=True)
 
@@ -148,6 +191,7 @@ def main():
     ])
 
     print(f"Found {len(pred_dirs)} prediction directories")
+    print(f"Mode: {args.mode}")
 
     # Build evaluation tasks
     tasks = []
@@ -170,10 +214,21 @@ def main():
 
     print(f"Running {len(tasks)} evaluations with {args.max_workers} workers")
 
-    # Run first task synchronously (ensures Docker image is downloaded)
+    # Select evaluation function
+    if args.mode == "docker":
+        def eval_fn(name, pred, ref):
+            evaluate_structure_docker(
+                name, pred, ref, str(args.outdir),
+                args.mount, args.docker_image, args.executable,
+            )
+    else:
+        def eval_fn(name, pred, ref):
+            evaluate_structure_conda(name, pred, ref, str(args.outdir))
+
+    # Run first task synchronously (catches setup issues early)
     if tasks:
         name, pred, ref = tasks[0]
-        evaluate_structure(name, pred, ref, str(args.outdir), args.mount, args.executable)
+        eval_fn(name, pred, ref)
         remaining = tasks[1:]
     else:
         remaining = []
@@ -182,10 +237,7 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(args.max_workers) as executor:
         futures = []
         for name, pred, ref in remaining:
-            future = executor.submit(
-                evaluate_structure, name, pred, ref,
-                str(args.outdir), args.mount, args.executable,
-            )
+            future = executor.submit(eval_fn, name, pred, ref)
             futures.append(future)
 
         with tqdm(total=len(futures)) as pbar:

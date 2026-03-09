@@ -4,8 +4,8 @@
 #
 # Prerequisites:
 #   - WSL2 with Ubuntu 24.04
-#   - Docker Desktop installed and WSL integration enabled
 #   - NVIDIA drivers installed on Windows (nvidia-smi works in WSL)
+#   - conda or mamba
 #
 # Usage:
 #   # Full setup (first time)
@@ -30,11 +30,15 @@ set -euo pipefail
 
 BENCH_DIR="${BENCH_DIR:-$HOME/boltz-benchmark}"
 CONDA_ENV="${CONDA_ENV:-boltz-bench}"
+OST_CONDA_ENV="${OST_CONDA_ENV:-ost-eval}"
 REPO_URL="https://github.com/Novel-Therapeutics/boltz-community.git"
 EVAL_DATA_ID="1JvHlYUMINOaqPTunI9wBYrfYniKgVmxf"  # Google Drive file ID
-OST_TAG="openstructure-0.2.8"
-OST_GIT_URL="https://git.scicore.unibas.ch/schwede/openstructure.git"
-OST_GIT_TAG="2.8.0"
+
+# OpenStructure version: 2.9.3 is closest available on bioconda to the 2.8.0
+# used in the Boltz-1 paper. Note: lDDT-PLI scoring changed slightly in 2.9.0.
+# For tracking regressions before/after our changes this is fine — we just need
+# the SAME version across all our runs.
+OST_VERSION="2.9.3"
 
 # Prediction parameters (matching Boltz-1 paper)
 RECYCLING_STEPS=10
@@ -77,32 +81,14 @@ preflight() {
     GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
     ok "GPU: ${GPU_NAME} (${GPU_MEM} MiB)"
 
-    # Check Docker
-    if ! command -v docker &>/dev/null; then
-        err "Docker not found. Install Docker Desktop and enable WSL integration."
-        exit 1
-    fi
-    if ! docker info &>/dev/null; then
-        err "Docker daemon not running. Start Docker Desktop."
-        exit 1
-    fi
-    ok "Docker is running"
-
-    # Check NVIDIA container runtime
-    if docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi &>/dev/null; then
-        ok "NVIDIA container runtime works"
-    else
-        warn "NVIDIA container runtime test failed — GPU eval may not work in Docker"
-        warn "This is OK; OpenStructure eval runs on CPU"
-    fi
-
     # Check conda/mamba
     if command -v conda &>/dev/null; then
         ok "conda found: $(conda --version)"
     elif command -v mamba &>/dev/null; then
         ok "mamba found"
     else
-        warn "conda/mamba not found — will try system Python"
+        err "conda or mamba is required. Install miniforge: https://github.com/conda-forge/miniforge"
+        exit 1
     fi
 }
 
@@ -122,39 +108,43 @@ setup_env() {
         git clone "${REPO_URL}" "${BENCH_DIR}/boltz-community"
     fi
 
-    # Create conda environment
-    if command -v conda &>/dev/null; then
-        if conda env list | grep -q "^${CONDA_ENV} "; then
-            info "Conda env '${CONDA_ENV}' already exists"
-        else
-            info "Creating conda env '${CONDA_ENV}' with Python 3.11..."
-            conda create -n "${CONDA_ENV}" python=3.11 -y
-        fi
-        info "Installing boltz-community..."
-        conda run -n "${CONDA_ENV}" pip install -e "${BENCH_DIR}/boltz-community[cuda]"
-        conda run -n "${CONDA_ENV}" pip install -e "${BENCH_DIR}/boltz-community/tools/affinity-eval[dev]"
-        conda run -n "${CONDA_ENV}" pip install gdown  # for Google Drive download
+    # --- Boltz conda environment (GPU predictions) ---
+    if conda env list | grep -q "^${CONDA_ENV} "; then
+        info "Conda env '${CONDA_ENV}' already exists"
     else
-        info "Installing with system pip..."
-        pip install -e "${BENCH_DIR}/boltz-community[cuda]"
-        pip install -e "${BENCH_DIR}/boltz-community/tools/affinity-eval[dev]"
-        pip install gdown
+        info "Creating conda env '${CONDA_ENV}' with Python 3.11..."
+        conda create -n "${CONDA_ENV}" python=3.11 -y
     fi
+    info "Installing boltz-community..."
+    conda run -n "${CONDA_ENV}" pip install -e "${BENCH_DIR}/boltz-community[cuda]"
+    conda run -n "${CONDA_ENV}" pip install -e "${BENCH_DIR}/boltz-community/tools/affinity-eval[dev]"
+    conda run -n "${CONDA_ENV}" pip install gdown
+    ok "Boltz env '${CONDA_ENV}' ready"
 
-    # Build OpenStructure Docker image from source
-    # No pre-built image exists on the registry for v2.8.0 — we build from the Dockerfile
-    info "Building OpenStructure Docker image (this may take 10-20 min on first run)..."
-    if docker image inspect "${OST_TAG}" &>/dev/null; then
-        ok "OpenStructure image already available"
+    # --- OpenStructure conda environment (CPU evaluation) ---
+    # Separate env because OST has conflicting dependencies with PyTorch/boltz
+    if conda env list | grep -q "^${OST_CONDA_ENV} "; then
+        info "Conda env '${OST_CONDA_ENV}' already exists"
     else
-        OST_BUILD_DIR="${BENCH_DIR}/openstructure-docker"
-        if [ ! -d "${OST_BUILD_DIR}" ]; then
-            info "Cloning OpenStructure ${OST_GIT_TAG}..."
-            git clone --depth 1 --branch "${OST_GIT_TAG}" "${OST_GIT_URL}" "${OST_BUILD_DIR}"
+        info "Creating conda env '${OST_CONDA_ENV}' with OpenStructure ${OST_VERSION}..."
+        info "(This may take a few minutes)"
+        conda create -n "${OST_CONDA_ENV}" -c conda-forge -c bioconda \
+            "openstructure=${OST_VERSION}" python=3.11 -y
+    fi
+    ok "OpenStructure env '${OST_CONDA_ENV}' ready"
+
+    # Verify OST works
+    info "Verifying OpenStructure installation..."
+    OST_VER=$(conda run -n "${OST_CONDA_ENV}" ost --version 2>&1 || true)
+    if echo "${OST_VER}" | grep -q "OpenStructure"; then
+        ok "OpenStructure: ${OST_VER}"
+    else
+        # Try compare-structures directly
+        if conda run -n "${OST_CONDA_ENV}" ost compare-structures --help &>/dev/null; then
+            ok "OpenStructure compare-structures is available"
+        else
+            warn "Could not verify OpenStructure — evaluation may not work"
         fi
-        info "Building Docker image (tag: ${OST_TAG})..."
-        docker build -t "${OST_TAG}" "${OST_BUILD_DIR}/docker"
-        ok "OpenStructure image built and tagged as ${OST_TAG}"
     fi
 
     ok "Setup complete!"
@@ -176,20 +166,12 @@ download_data() {
         return
     fi
 
-    # gdown handles Google Drive's virus scan warning for large files
-    if command -v conda &>/dev/null && conda env list | grep -q "^${CONDA_ENV} "; then
-        PYTHON="conda run -n ${CONDA_ENV} python"
-        GDOWN="conda run -n ${CONDA_ENV} gdown"
-    else
-        PYTHON="python"
-        GDOWN="gdown"
-    fi
-
     if [ -f "${ARCHIVE}" ]; then
         info "Archive already downloaded, extracting..."
     else
         info "Downloading (~2-5 GB, may take a while)..."
-        ${GDOWN} "https://drive.google.com/uc?id=${EVAL_DATA_ID}" -O "${ARCHIVE}" --fuzzy
+        conda run -n "${CONDA_ENV}" gdown \
+            "https://drive.google.com/uc?id=${EVAL_DATA_ID}" -O "${ARCHIVE}" --fuzzy
     fi
 
     info "Extracting..."
@@ -210,12 +192,12 @@ download_data() {
 
 # --- Run predictions ----------------------------------------------------------
 
-_run_cmd() {
-    if command -v conda &>/dev/null && conda env list | grep -q "^${CONDA_ENV} "; then
-        conda run --no-capture-output -n "${CONDA_ENV}" "$@"
-    else
-        "$@"
-    fi
+_run_boltz() {
+    conda run --no-capture-output -n "${CONDA_ENV}" "$@"
+}
+
+_run_ost() {
+    conda run --no-capture-output -n "${OST_CONDA_ENV}" "$@"
 }
 
 _check_triton() {
@@ -239,7 +221,7 @@ run_pilot() {
 
     _check_triton
 
-    # Select a random subset of targets for the pilot
+    # Select a subset of targets for the pilot
     PILOT_DIR="${BENCH_DIR}/data/pilot_inputs"
     mkdir -p "${PILOT_DIR}"
 
@@ -263,7 +245,7 @@ run_pilot() {
 
     # Run Boltz-2 (default model)
     info "=== Boltz-2 predictions ==="
-    _run_cmd boltz predict "${PILOT_DIR}" \
+    _run_boltz boltz predict "${PILOT_DIR}" \
         --out_dir "${BENCH_DIR}/results/pilot_boltz2" \
         --recycling_steps "${RECYCLING_STEPS}" \
         --sampling_steps "${SAMPLING_STEPS}" \
@@ -277,7 +259,7 @@ run_pilot() {
 
     # Run Boltz-1
     info "=== Boltz-1 predictions ==="
-    _run_cmd boltz predict "${PILOT_DIR}" \
+    _run_boltz boltz predict "${PILOT_DIR}" \
         --out_dir "${BENCH_DIR}/results/pilot_boltz1" \
         --recycling_steps "${RECYCLING_STEPS}" \
         --sampling_steps "${SAMPLING_STEPS}" \
@@ -340,7 +322,7 @@ run_full() {
                 MODEL_FLAG="--model boltz1"
             fi
 
-            _run_cmd boltz predict "${DS_INPUT}" \
+            _run_boltz boltz predict "${DS_INPUT}" \
                 --out_dir "${RESULT_DIR}" \
                 --recycling_steps "${RECYCLING_STEPS}" \
                 --sampling_steps "${SAMPLING_STEPS}" \
@@ -367,6 +349,7 @@ run_evaluate() {
     REPO="${BENCH_DIR}/boltz-community"
 
     info "Running OpenStructure evaluation (${SCOPE})..."
+    info "Using OpenStructure ${OST_VERSION} via conda env '${OST_CONDA_ENV}'"
 
     for MODEL in boltz2 boltz1; do
         for DATASET in test casp15; do
@@ -401,16 +384,15 @@ run_evaluate() {
             info "  References:  ${REF_DIR}"
             info "  Output:      ${EVAL_DIR}"
 
-            _run_cmd python "${REPO}/scripts/eval/run_boltz_eval.py" \
+            _run_ost python "${REPO}/scripts/eval/run_boltz_eval.py" \
                 "${PRED_SUBDIR}" \
                 "${REF_DIR}" \
                 "${EVAL_DIR}" \
-                --mount "${BENCH_DIR}" \
                 --num-samples "${DIFFUSION_SAMPLES}"
 
-            # Aggregate
+            # Aggregate (runs in boltz env since it needs pandas/numpy)
             info "Aggregating results..."
-            _run_cmd python "${REPO}/scripts/eval/aggregate_boltz_eval.py" \
+            _run_boltz python "${REPO}/scripts/eval/aggregate_boltz_eval.py" \
                 "${PRED_SUBDIR}" \
                 "${EVAL_DIR}" \
                 --output "${BENCH_DIR}/results/${SCOPE}_${MODEL}_${DATASET}_results.csv" \
@@ -446,12 +428,17 @@ status() {
         || echo "  (not available)"
     echo ""
 
-    # Docker
-    echo "Docker:"
-    if docker image inspect "${OST_TAG}" &>/dev/null; then
-        ok "OpenStructure image available"
+    # Conda envs
+    echo "Conda environments:"
+    if conda env list | grep -q "^${CONDA_ENV} "; then
+        ok "Boltz env '${CONDA_ENV}' exists"
     else
-        warn "OpenStructure image not pulled"
+        warn "Boltz env '${CONDA_ENV}' not created"
+    fi
+    if conda env list | grep -q "^${OST_CONDA_ENV} "; then
+        ok "OpenStructure env '${OST_CONDA_ENV}' exists"
+    else
+        warn "OpenStructure env '${OST_CONDA_ENV}' not created"
     fi
     echo ""
 
@@ -514,7 +501,7 @@ case "${1:-help}" in
         echo "Usage: bash scripts/eval/setup_benchmark.sh <command>"
         echo ""
         echo "Commands:"
-        echo "  setup      Install dependencies, clone repo, pull Docker images"
+        echo "  setup      Install dependencies, create conda envs"
         echo "  download   Download Boltz-1 evaluation data from Google Drive"
         echo "  pilot      Run pilot benchmark (${PILOT_N} targets, ~1-2 hours on 4090)"
         echo "  full       Run full benchmark (all targets, ~1-3 days on 4090)"
@@ -523,8 +510,9 @@ case "${1:-help}" in
         echo "  preflight  Check system prerequisites"
         echo ""
         echo "Environment variables:"
-        echo "  BENCH_DIR   Benchmark working directory (default: ~/boltz-benchmark)"
-        echo "  CONDA_ENV   Conda environment name (default: boltz-bench)"
-        echo "  PILOT_N     Number of targets for pilot run (default: 20)"
+        echo "  BENCH_DIR       Benchmark working directory (default: ~/boltz-benchmark)"
+        echo "  CONDA_ENV       Boltz conda environment (default: boltz-bench)"
+        echo "  OST_CONDA_ENV   OpenStructure conda environment (default: ost-eval)"
+        echo "  PILOT_N         Number of targets for pilot run (default: 20)"
         ;;
 esac
