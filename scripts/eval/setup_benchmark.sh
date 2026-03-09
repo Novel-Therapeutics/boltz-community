@@ -129,7 +129,7 @@ setup_env() {
         info "Creating conda env '${OST_CONDA_ENV}' with OpenStructure ${OST_VERSION}..."
         info "(This may take a few minutes)"
         conda create -n "${OST_CONDA_ENV}" -c conda-forge -c bioconda \
-            "openstructure=${OST_VERSION}" python=3.11 -y
+            "openstructure=${OST_VERSION}" -y
     fi
     ok "OpenStructure env '${OST_CONDA_ENV}' ready"
 
