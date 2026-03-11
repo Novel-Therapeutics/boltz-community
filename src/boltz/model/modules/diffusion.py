@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from math import sqrt
+
 import torch
 import torch.nn.functional as F
 from einops import rearrange
@@ -515,10 +517,12 @@ class AtomDiffusion(Module):
                     "bmd,bds->bms", scaled_guidance_update, random_R
                 )
 
+            sigma_tm, sigma_t, gamma = sigma_tm.item(), sigma_t.item(), gamma.item()
+
             t_hat = sigma_tm * (1 + gamma)
             steering_t = 1.0 - (step_idx / num_sampling_steps)
             noise_var = self.noise_scale**2 * (t_hat**2 - sigma_tm**2)
-            eps = torch.sqrt(noise_var) * torch.randn(shape, device=self.device)
+            eps = sqrt(noise_var) * torch.randn(shape, device=self.device)
             atom_coords_noisy = atom_coords + eps
 
             with torch.no_grad():
