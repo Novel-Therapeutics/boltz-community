@@ -42,16 +42,18 @@ def parse_yaml_target(yaml_path: Path) -> dict | None:
         if "protein" in entry:
             prot = entry["protein"]
             seq = prot.get("sequence", "")
-            total_residues += len(seq)
-            # id can be a string or list
+            # id can be a string or list — each id is a copy of the chain
             ids = prot.get("id", "A")
-            n_protein_chains += len(ids) if isinstance(ids, list) else 1
+            n_copies = len(ids) if isinstance(ids, list) else 1
+            total_residues += len(seq) * n_copies
+            n_protein_chains += n_copies
 
         elif "rna" in entry or "dna" in entry:
             key = "rna" if "rna" in entry else "dna"
             seq = entry[key].get("sequence", "")
-            total_residues += len(seq)
             ids = entry[key].get("id", "X")
+            n_copies = len(ids) if isinstance(ids, list) else 1
+            total_residues += len(seq) * n_copies
             n_nucleic += len(ids) if isinstance(ids, list) else 1
 
         elif "ligand" in entry:

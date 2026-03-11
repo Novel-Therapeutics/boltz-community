@@ -52,9 +52,11 @@ SEED=42
 # Pilot subset size
 PILOT_N=20
 
-# Dev benchmark: curated representative set
+# Dev benchmark: curated representative set (fast iteration)
 DEV_N=25
-DEV_MAX_RESIDUES=1000
+DEV_MAX_RESIDUES=600
+DEV_SAMPLING_STEPS=50
+DEV_DIFFUSION_SAMPLES=1
 
 # --- Colors -------------------------------------------------------------------
 
@@ -375,13 +377,15 @@ run_dev() {
     ACTUAL_N=$(ls "${DEV_DIR}/queries/" | wc -l)
     info "Running predictions on ${ACTUAL_N} curated targets..."
 
+    info "Dev parameters: ${DEV_SAMPLING_STEPS} sampling steps, ${DEV_DIFFUSION_SAMPLES} sample(s)"
+
     # Run Boltz-2
     info "=== Boltz-2 predictions ==="
     _run_boltz boltz predict "${DEV_DIR}/queries" \
         --out_dir "${BENCH_DIR}/results/dev_boltz2" \
         --recycling_steps "${RECYCLING_STEPS}" \
-        --sampling_steps "${SAMPLING_STEPS}" \
-        --diffusion_samples "${DIFFUSION_SAMPLES}" \
+        --sampling_steps "${DEV_SAMPLING_STEPS}" \
+        --diffusion_samples "${DEV_DIFFUSION_SAMPLES}" \
         --seed "${SEED}" \
         --skip_bad_inputs \
         2>&1 | tee "${BENCH_DIR}/results/dev_boltz2.log"
@@ -393,8 +397,8 @@ run_dev() {
     _run_boltz boltz predict "${DEV_DIR}/queries" \
         --out_dir "${BENCH_DIR}/results/dev_boltz1" \
         --recycling_steps "${RECYCLING_STEPS}" \
-        --sampling_steps "${SAMPLING_STEPS}" \
-        --diffusion_samples "${DIFFUSION_SAMPLES}" \
+        --sampling_steps "${DEV_SAMPLING_STEPS}" \
+        --diffusion_samples "${DEV_DIFFUSION_SAMPLES}" \
         --seed "${SEED}" \
         --skip_bad_inputs \
         --model boltz1 \
@@ -555,11 +559,18 @@ run_evaluate() {
             info "  References:  ${REF_DIR}"
             info "  Output:      ${EVAL_DIR}"
 
+            # Use fewer samples for dev scope
+            if [ "${SCOPE}" = "dev" ]; then
+                NUM_SAMPLES="${DEV_DIFFUSION_SAMPLES}"
+            else
+                NUM_SAMPLES="${DIFFUSION_SAMPLES}"
+            fi
+
             _run_ost python "${REPO}/scripts/eval/run_boltz_eval.py" \
                 "${PRED_SUBDIR}" \
                 "${REF_DIR}" \
                 "${EVAL_DIR}" \
-                --num-samples "${DIFFUSION_SAMPLES}"
+                --num-samples "${NUM_SAMPLES}"
 
             # Aggregate (runs in boltz env since it needs pandas/numpy)
             info "Aggregating results..."
@@ -567,7 +578,7 @@ run_evaluate() {
                 "${PRED_SUBDIR}" \
                 "${EVAL_DIR}" \
                 --output "${BENCH_DIR}/results/${SCOPE}_${MODEL}_${DATASET}_results.csv" \
-                --num-samples "${DIFFUSION_SAMPLES}"
+                --num-samples "${NUM_SAMPLES}"
 
             ok "${MODEL} on ${DATASET} evaluation complete"
         done
