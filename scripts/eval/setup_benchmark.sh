@@ -29,6 +29,9 @@
 
 set -euo pipefail
 
+# Ensure child processes are killed on exit/interrupt
+trap 'kill 0 2>/dev/null; exit 1' INT TERM
+
 # --- Configuration -----------------------------------------------------------
 
 BENCH_DIR="${BENCH_DIR:-$HOME/boltz-benchmark}"
@@ -597,7 +600,53 @@ run_evaluate() {
             cat "${SUMMARY}"
         fi
     done
+
+    # Auto-clean after evaluation
+    run_clean
 }
+
+
+# --- Clean up -----------------------------------------------------------------
+
+run_clean() {
+    info "Cleaning up..."
+
+    # Remove processed/featurized data (regenerated each run)
+    CLEANED=0
+    for PROC_DIR in "${BENCH_DIR}"/results/*/processed/; do
+        if [ -d "${PROC_DIR}" ]; then
+            SIZE=$(du -sh "${PROC_DIR}" 2>/dev/null | cut -f1)
+            rm -rf "${PROC_DIR}"
+            info "Removed ${PROC_DIR} (${SIZE})"
+            CLEANED=$((CLEANED + 1))
+        fi
+    done
+
+    # Kill orphaned boltz/python GPU processes
+    ORPHANS=$(ps aux | grep -E '[b]oltz predict|[p]ython.*boltz' | grep -v "$$" | awk '{print $2}')
+    if [ -n "${ORPHANS}" ]; then
+        for PID in ${ORPHANS}; do
+            info "Killing orphaned process ${PID}"
+            kill "${PID}" 2>/dev/null || true
+        done
+    fi
+
+    if [ "${CLEANED}" -eq 0 ]; then
+        info "Nothing to clean"
+    else
+        ok "Cleaned ${CLEANED} processed directories"
+    fi
+
+    # Report remaining disk usage
+    if [ -d "${BENCH_DIR}" ]; then
+        echo ""
+        info "Disk usage:"
+        du -sh "${BENCH_DIR}"/data/ 2>/dev/null | sed 's/^/  /'
+        du -sh "${BENCH_DIR}"/results/ 2>/dev/null | sed 's/^/  /'
+        du -sh "${BENCH_DIR}"/evals/ 2>/dev/null | sed 's/^/  /'
+    fi
+}
+
 
 # --- Status -------------------------------------------------------------------
 
@@ -690,6 +739,9 @@ case "${COMMAND}" in
     evaluate)
         run_evaluate "${EXTRA_ARGS[0]:-pilot}"
         ;;
+    clean)
+        run_clean
+        ;;
     status)
         status
         ;;
@@ -708,6 +760,7 @@ case "${COMMAND}" in
         echo "  dev        Run dev benchmark (${DEV_N} curated targets)"
         echo "  full       Run full benchmark (all targets, ~1-3 days on 4090)"
         echo "  evaluate [pilot|dev|full]  Run OpenStructure eval on predictions"
+        echo "  clean      Remove processed data and orphaned processes"
         echo "  status     Show current benchmark status"
         echo "  preflight  Check system prerequisites"
         echo ""
