@@ -41,6 +41,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 **Improvements:**
 - Added `--skip_bad_inputs` flag: by default `boltz predict` now aborts when any input fails processing; pass `--skip_bad_inputs` to skip bad inputs and continue with the rest
 - Deferred heavy imports (torch, rdkit, pytorch-lightning) so `boltz.main` loads instantly for CLI help and input validation
+- `--devices` now accepts a comma-separated list of specific GPU device IDs in addition to a device count (e.g. `--devices 0,1` targets GPUs 0 and 1; use `CUDA_VISIBLE_DEVICES=1 boltz predict ...` to target a single GPU by index)
 
 **Performance (~5% faster inference on GPU):**
 - Model weights now load directly to GPU instead of CPU-then-transfer

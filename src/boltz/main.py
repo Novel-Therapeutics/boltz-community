@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 import click
 
@@ -902,6 +902,13 @@ def cli() -> None:
     return
 
 
+def _parse_devices(value: str) -> Union[int, List[int]]:
+    """Parse --devices as an integer count or comma-separated list of device IDs."""
+    if "," in value:
+        return [int(x.strip()) for x in value.split(",")]
+    return int(value)
+
+
 @cli.command(context_settings={"show_default": True})
 @click.argument("data", type=click.Path(exists=True))
 @click.option(
@@ -927,9 +934,15 @@ def cli() -> None:
 )
 @click.option(
     "--devices",
-    type=int,
-    help="The number of devices to use for prediction.",
-    default=1,
+    type=str,
+    callback=lambda ctx, param, value: _parse_devices(value),
+    help=(
+        "Devices to use for prediction. Pass an integer to set the number of devices "
+        "(e.g. --devices 2 uses 2 GPUs), or a comma-separated list of specific device IDs "
+        "(e.g. --devices 0,1 uses GPUs 0 and 1). To target a single GPU by index, use "
+        "CUDA_VISIBLE_DEVICES=1 boltz predict ... Default is 1."
+    ),
+    default="1",
 )
 @click.option(
     "--accelerator",
@@ -1137,7 +1150,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     cache: str,
     checkpoint: Optional[str],
     affinity_checkpoint: Optional[str],
-    devices: int,
+    devices: Union[int, List[int]],
     accelerator: str,
     recycling_steps: int,
     sampling_steps: int,
@@ -1358,7 +1371,8 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     ):
         start_method = "fork" if platform.system() != "win32" and platform.system() != "Windows" else "spawn"
         strategy = DDPStrategy(start_method=start_method)
-        if len(filtered_manifest.records) < devices:
+        device_count = len(devices) if isinstance(devices, list) else devices
+        if len(filtered_manifest.records) < device_count:
             msg = (
                 "Number of requested devices is greater "
                 "than the number of predictions, taking the minimum."
