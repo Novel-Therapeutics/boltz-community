@@ -1410,8 +1410,8 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         write_embeddings=write_embeddings,
     )
 
-    # MPS does not support bf16-mixed
-    if accelerator == "mps":
+    # MPS and CPU do not support bf16-mixed
+    if accelerator in ("mps", "cpu"):
         precision = 32
     elif model == "boltz1":
         precision = 32
