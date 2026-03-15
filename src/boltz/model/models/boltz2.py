@@ -584,13 +584,14 @@ class Boltz2(LightningModule):
                 assert len(feats["coords"].shape) == 3
 
         if self.confidence_prediction:
+            _detach = self.training
             dict_out.update(
                 self.confidence_module(
-                    s_inputs=s_inputs.detach(),
-                    s=s.detach(),
-                    z=z.detach(),
+                    s_inputs=s_inputs.detach() if _detach else s_inputs,
+                    s=s.detach() if _detach else s,
+                    z=z.detach() if _detach else z,
                     x_pred=(
-                        dict_out["sample_atom_coords"].detach()
+                        (dict_out["sample_atom_coords"].detach() if _detach else dict_out["sample_atom_coords"])
                         if not self.skip_run_structure
                         else feats["coords"].repeat_interleave(diffusion_samples, 0)
                     ),
@@ -598,7 +599,7 @@ class Boltz2(LightningModule):
                     pred_distogram_logits=(
                         dict_out["pdistogram"][
                             :, :, :, 0
-                        ].detach()  # TODO only implemented for 1 distogram
+                        ].detach() if _detach else dict_out["pdistogram"][:, :, :, 0]  # TODO only implemented for 1 distogram
                     ),
                     multiplicity=diffusion_samples,
                     run_sequentially=run_confidence_sequentially,

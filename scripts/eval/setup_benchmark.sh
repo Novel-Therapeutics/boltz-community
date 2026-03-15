@@ -17,6 +17,9 @@
 #   # Run pilot benchmark (20 targets, quick validation)
 #   bash scripts/eval/setup_benchmark.sh pilot
 #
+#   # Run dev benchmark (25 curated targets, fast iteration)
+#   bash scripts/eval/setup_benchmark.sh dev
+#
 #   # Run full benchmark
 #   bash scripts/eval/setup_benchmark.sh full
 #
@@ -25,6 +28,9 @@
 # =============================================================================
 
 set -euo pipefail
+
+# Ensure child processes are killed on exit/interrupt
+trap 'kill 0 2>/dev/null; exit 1' INT TERM
 
 # --- Configuration -----------------------------------------------------------
 
@@ -45,9 +51,17 @@ RECYCLING_STEPS=10
 SAMPLING_STEPS=200
 DIFFUSION_SAMPLES=5
 SEED=42
+PREPROCESSING_THREADS=4  # 32 threads can OOM on WSL2
 
 # Pilot subset size
 PILOT_N=20
+
+# Dev benchmark: curated representative set (fast iteration)
+# Override via flags: --samples N --steps N --targets N --max-residues N
+DEV_N="${DEV_N:-25}"
+DEV_MAX_RESIDUES="${DEV_MAX_RESIDUES:-600}"
+DEV_SAMPLING_STEPS="${DEV_SAMPLING_STEPS:-100}"
+DEV_DIFFUSION_SAMPLES="${DEV_DIFFUSION_SAMPLES:-5}"
 
 # --- Colors -------------------------------------------------------------------
 
@@ -200,12 +214,27 @@ download_data() {
 # --- Run predictions ----------------------------------------------------------
 
 _run_boltz() {
-    export PYTHONWARNINGS="ignore::DeprecationWarning:torch.utils.data._utils.pin_memory"
+    # Suppress noisy warnings from PyTorch, Lightning, and cuequivariance
+    export PYTHONWARNINGS="ignore::DeprecationWarning,ignore::UserWarning:pytorch_lightning,ignore::UserWarning:cuequivariance_ops_torch,ignore::UserWarning:torch"
+    export PL_DISABLE_TIPS=1
     conda run --no-capture-output -n "${CONDA_ENV}" "$@"
 }
 
 _run_ost() {
     conda run --no-capture-output -n "${OST_CONDA_ENV}" "$@"
+}
+
+_kill_orphans() {
+    # Kill any leftover boltz/python GPU processes from previous runs
+    local ORPHANS
+    ORPHANS=$(ps aux | grep -E '[b]oltz predict|[p]ython.*boltz' | grep -v "$$" | awk '{print $2}' || true)
+    if [ -n "${ORPHANS}" ]; then
+        for PID in ${ORPHANS}; do
+            warn "Killing orphaned process ${PID}"
+            kill "${PID}" 2>/dev/null || true
+        done
+        sleep 1
+    fi
 }
 
 _check_triton() {
@@ -219,6 +248,7 @@ _check_triton() {
 }
 
 run_pilot() {
+    _kill_orphans
     info "Running pilot benchmark (${PILOT_N} targets)..."
 
     EVAL_DATA="${BENCH_DIR}/data/boltz_results_final"
@@ -279,6 +309,7 @@ run_pilot() {
         --diffusion_samples "${DIFFUSION_SAMPLES}" \
         --seed "${SEED}" \
         --skip_bad_inputs \
+        --preprocessing-threads "${PREPROCESSING_THREADS}" \
         2>&1 | tee "${BENCH_DIR}/results/pilot_boltz2.log"
 
     ok "Pilot Boltz-2 predictions complete"
@@ -292,6 +323,7 @@ run_pilot() {
         --diffusion_samples "${DIFFUSION_SAMPLES}" \
         --seed "${SEED}" \
         --skip_bad_inputs \
+        --preprocessing-threads "${PREPROCESSING_THREADS}" \
         --model boltz1 \
         2>&1 | tee "${BENCH_DIR}/results/pilot_boltz1.log"
 
@@ -304,6 +336,108 @@ run_pilot() {
     echo ""
     info "Next: bash scripts/eval/setup_benchmark.sh evaluate pilot"
 }
+
+
+# --- Dev benchmark (curated representative set) ------------------------------
+
+run_dev() {
+    _kill_orphans
+    info "Running DEV benchmark (${DEV_N} curated targets)..."
+
+    EVAL_DATA="${BENCH_DIR}/data/boltz_results_final"
+    INPUT_DIR="${EVAL_DATA}/inputs/test/boltz"
+    DEV_DIR="${BENCH_DIR}/data/dev_inputs"
+
+    if [ ! -d "${INPUT_DIR}/queries" ]; then
+        err "Eval data not found. Run: bash scripts/eval/setup_benchmark.sh download"
+        exit 1
+    fi
+
+    _check_triton
+
+    if [ ! -d "${DEV_DIR}/queries" ]; then
+        info "Curating dev target set..."
+
+        # Generate target list using curation script
+        REPO="${BENCH_DIR}/boltz-community"
+        DEV_LIST="${DEV_DIR}/targets.txt"
+        mkdir -p "${DEV_DIR}"
+
+        _run_boltz python "${REPO}/scripts/eval/curate_dev_set.py" \
+            "${INPUT_DIR}/queries/" \
+            --num-targets "${DEV_N}" \
+            --max-residues "${DEV_MAX_RESIDUES}" \
+            --seed "${SEED}" \
+            --output "${DEV_LIST}"
+
+        # Copy selected targets with rewritten MSA paths
+        mkdir -p "${DEV_DIR}/queries" "${DEV_DIR}/msa"
+
+        while IFS= read -r TARGET_NAME; do
+            YAML_FILE="${TARGET_NAME}.yaml"
+
+            if [ ! -f "${INPUT_DIR}/queries/${YAML_FILE}" ]; then
+                warn "Target YAML not found: ${YAML_FILE}, skipping"
+                continue
+            fi
+
+            # Copy YAML and rewrite MSA paths
+            sed "s|/data/rbg/users/[^ ]*/msa/|../msa/|g" \
+                "${INPUT_DIR}/queries/${YAML_FILE}" > "${DEV_DIR}/queries/${YAML_FILE}"
+
+            # Copy corresponding MSA files
+            for MSA_FILE in "${INPUT_DIR}"/msa/${TARGET_NAME}*; do
+                [ -f "${MSA_FILE}" ] && cp "${MSA_FILE}" "${DEV_DIR}/msa/"
+            done
+        done < "${DEV_LIST}"
+
+        ok "Prepared $(ls "${DEV_DIR}/queries/" | wc -l) dev inputs"
+    else
+        info "Dev inputs already prepared"
+    fi
+
+    ACTUAL_N=$(ls "${DEV_DIR}/queries/" | wc -l)
+    info "Running predictions on ${ACTUAL_N} curated targets..."
+
+    info "Dev parameters: ${DEV_SAMPLING_STEPS} sampling steps, ${DEV_DIFFUSION_SAMPLES} sample(s)"
+
+    # Run Boltz-2
+    info "=== Boltz-2 predictions ==="
+    _run_boltz boltz predict "${DEV_DIR}/queries" \
+        --out_dir "${BENCH_DIR}/results/dev_boltz2" \
+        --recycling_steps "${RECYCLING_STEPS}" \
+        --sampling_steps "${DEV_SAMPLING_STEPS}" \
+        --diffusion_samples "${DEV_DIFFUSION_SAMPLES}" \
+        --seed "${SEED}" \
+        --skip_bad_inputs \
+        --preprocessing-threads "${PREPROCESSING_THREADS}" \
+        2>&1 | tee "${BENCH_DIR}/results/dev_boltz2.log"
+
+    ok "Dev Boltz-2 predictions complete"
+
+    # Run Boltz-1
+    info "=== Boltz-1 predictions ==="
+    _run_boltz boltz predict "${DEV_DIR}/queries" \
+        --out_dir "${BENCH_DIR}/results/dev_boltz1" \
+        --recycling_steps "${RECYCLING_STEPS}" \
+        --sampling_steps "${DEV_SAMPLING_STEPS}" \
+        --diffusion_samples "${DEV_DIFFUSION_SAMPLES}" \
+        --seed "${SEED}" \
+        --skip_bad_inputs \
+        --preprocessing-threads "${PREPROCESSING_THREADS}" \
+        --model boltz1 \
+        2>&1 | tee "${BENCH_DIR}/results/dev_boltz1.log"
+
+    ok "Dev Boltz-1 predictions complete"
+
+    echo ""
+    info "Dev predictions saved to:"
+    echo "  Boltz-2: ${BENCH_DIR}/results/dev_boltz2/"
+    echo "  Boltz-1: ${BENCH_DIR}/results/dev_boltz1/"
+    echo ""
+    info "Next: bash scripts/eval/setup_benchmark.sh evaluate dev"
+}
+
 
 _prepare_inputs() {
     # Prepare inputs for a dataset by rewriting MSA paths to local paths
@@ -342,6 +476,7 @@ _prepare_inputs() {
 }
 
 run_full() {
+    _kill_orphans
     info "Running FULL benchmark (this will take many hours)..."
 
     EVAL_DATA="${BENCH_DIR}/data/boltz_results_final"
@@ -388,6 +523,7 @@ run_full() {
                 --diffusion_samples "${DIFFUSION_SAMPLES}" \
                 --seed "${SEED}" \
                 --skip_bad_inputs \
+        --preprocessing-threads "${PREPROCESSING_THREADS}" \
                 ${MODEL_FLAG} \
                 2>&1 | tee "${RESULT_DIR}.log"
 
@@ -411,14 +547,14 @@ run_evaluate() {
 
     for MODEL in boltz2 boltz1; do
         for DATASET in test casp15; do
-            if [ "${SCOPE}" = "pilot" ] && [ "${DATASET}" = "casp15" ]; then
+            if [ "${SCOPE}" != "full" ] && [ "${DATASET}" = "casp15" ]; then
                 continue
             fi
 
-            if [ "${SCOPE}" = "pilot" ]; then
-                PRED_DIR="${BENCH_DIR}/results/pilot_${MODEL}"
-            else
+            if [ "${SCOPE}" = "full" ]; then
                 PRED_DIR="${BENCH_DIR}/results/full_${MODEL}_${DATASET}"
+            else
+                PRED_DIR="${BENCH_DIR}/results/${SCOPE}_${MODEL}"
             fi
 
             # Find the predictions subdirectory (boltz creates boltz_results_<input_dir>/predictions/)
@@ -449,11 +585,18 @@ run_evaluate() {
             info "  References:  ${REF_DIR}"
             info "  Output:      ${EVAL_DIR}"
 
+            # Use fewer samples for dev scope
+            if [ "${SCOPE}" = "dev" ]; then
+                NUM_SAMPLES="${DEV_DIFFUSION_SAMPLES}"
+            else
+                NUM_SAMPLES="${DIFFUSION_SAMPLES}"
+            fi
+
             _run_ost python "${REPO}/scripts/eval/run_boltz_eval.py" \
                 "${PRED_SUBDIR}" \
                 "${REF_DIR}" \
                 "${EVAL_DIR}" \
-                --num-samples "${DIFFUSION_SAMPLES}"
+                --num-samples "${NUM_SAMPLES}"
 
             # Aggregate (runs in boltz env since it needs pandas/numpy)
             info "Aggregating results..."
@@ -461,7 +604,7 @@ run_evaluate() {
                 "${PRED_SUBDIR}" \
                 "${EVAL_DIR}" \
                 --output "${BENCH_DIR}/results/${SCOPE}_${MODEL}_${DATASET}_results.csv" \
-                --num-samples "${DIFFUSION_SAMPLES}"
+                --num-samples "${NUM_SAMPLES}"
 
             ok "${MODEL} on ${DATASET} evaluation complete"
         done
@@ -479,7 +622,53 @@ run_evaluate() {
             cat "${SUMMARY}"
         fi
     done
+
+    # Auto-clean after evaluation
+    run_clean
 }
+
+
+# --- Clean up -----------------------------------------------------------------
+
+run_clean() {
+    info "Cleaning up..."
+
+    # Remove processed/featurized data (regenerated each run)
+    CLEANED=0
+    for PROC_DIR in "${BENCH_DIR}"/results/*/processed/; do
+        if [ -d "${PROC_DIR}" ]; then
+            SIZE=$(du -sh "${PROC_DIR}" 2>/dev/null | cut -f1)
+            rm -rf "${PROC_DIR}"
+            info "Removed ${PROC_DIR} (${SIZE})"
+            CLEANED=$((CLEANED + 1))
+        fi
+    done
+
+    # Kill orphaned boltz/python GPU processes
+    ORPHANS=$(ps aux | grep -E '[b]oltz predict|[p]ython.*boltz' | grep -v "$$" | awk '{print $2}')
+    if [ -n "${ORPHANS}" ]; then
+        for PID in ${ORPHANS}; do
+            info "Killing orphaned process ${PID}"
+            kill "${PID}" 2>/dev/null || true
+        done
+    fi
+
+    if [ "${CLEANED}" -eq 0 ]; then
+        info "Nothing to clean"
+    else
+        ok "Cleaned ${CLEANED} processed directories"
+    fi
+
+    # Report remaining disk usage
+    if [ -d "${BENCH_DIR}" ]; then
+        echo ""
+        info "Disk usage:"
+        du -sh "${BENCH_DIR}"/data/ 2>/dev/null | sed 's/^/  /'
+        du -sh "${BENCH_DIR}"/results/ 2>/dev/null | sed 's/^/  /'
+        du -sh "${BENCH_DIR}"/evals/ 2>/dev/null | sed 's/^/  /'
+    fi
+}
+
 
 # --- Status -------------------------------------------------------------------
 
@@ -535,9 +724,24 @@ status() {
     done
 }
 
+# --- Parse flags --------------------------------------------------------------
+
+COMMAND="${1:-help}"
+shift || true
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --samples)      DEV_DIFFUSION_SAMPLES="$2"; shift 2 ;;
+        --steps)        DEV_SAMPLING_STEPS="$2"; shift 2 ;;
+        --targets)      DEV_N="$2"; shift 2 ;;
+        --max-residues) DEV_MAX_RESIDUES="$2"; shift 2 ;;
+        *)              EXTRA_ARGS+=("$1"); shift ;;
+    esac
+done
+
 # --- Main dispatch ------------------------------------------------------------
 
-case "${1:-help}" in
+case "${COMMAND}" in
     setup)
         preflight
         setup_env
@@ -548,11 +752,17 @@ case "${1:-help}" in
     pilot)
         run_pilot
         ;;
+    dev)
+        run_dev
+        ;;
     full)
         run_full
         ;;
     evaluate)
-        run_evaluate "${2:-pilot}"
+        run_evaluate "${EXTRA_ARGS[0]:-pilot}"
+        ;;
+    clean)
+        run_clean
         ;;
     status)
         status
@@ -569,15 +779,22 @@ case "${1:-help}" in
         echo "  setup      Install dependencies, create conda envs"
         echo "  download   Download Boltz-1 evaluation data from Google Drive"
         echo "  pilot      Run pilot benchmark (${PILOT_N} targets, ~1-2 hours on 4090)"
+        echo "  dev        Run dev benchmark (${DEV_N} curated targets)"
         echo "  full       Run full benchmark (all targets, ~1-3 days on 4090)"
-        echo "  evaluate [pilot|full]  Run OpenStructure eval on predictions"
+        echo "  evaluate [pilot|dev|full]  Run OpenStructure eval on predictions"
+        echo "  clean      Remove processed data and orphaned processes"
         echo "  status     Show current benchmark status"
         echo "  preflight  Check system prerequisites"
+        echo ""
+        echo "Dev flags (use with 'dev' command):"
+        echo "  --samples N       Diffusion samples per target (default: ${DEV_DIFFUSION_SAMPLES})"
+        echo "  --steps N         Sampling steps (default: ${DEV_SAMPLING_STEPS})"
+        echo "  --targets N       Number of targets (default: ${DEV_N})"
+        echo "  --max-residues N  Max residues per target (default: ${DEV_MAX_RESIDUES})"
         echo ""
         echo "Environment variables:"
         echo "  BENCH_DIR       Benchmark working directory (default: ~/boltz-benchmark)"
         echo "  CONDA_ENV       Boltz conda environment (default: boltz-bench)"
         echo "  OST_CONDA_ENV   OpenStructure conda environment (default: ost-eval)"
-        echo "  PILOT_N         Number of targets for pilot run (default: 20)"
         ;;
 esac
