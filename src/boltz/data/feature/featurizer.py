@@ -149,6 +149,107 @@ def dummy_msa(residues: np.ndarray) -> MSA:
     )
 
 
+def _trim_msa_to_input(
+    chain_msa: MSA,
+    input_residues: np.ndarray,
+    input_types: np.ndarray,
+    msa_query_types: np.ndarray,
+    query_res_start: int,
+    record_id: str,
+    warning: str,
+) -> MSA:
+    """Trim an MSA whose query is longer than the input (e.g., full UniProt vs PDB construct).
+
+    Finds the input sequence as a contiguous subsequence within the MSA query,
+    then trims all MSA sequences to the matching region. Falls back to dummy
+    if the input cannot be found.
+    """
+    input_len = len(input_types)
+    msa_len = len(msa_query_types)
+
+    # Slide input over MSA query to find best match
+    best_offset = -1
+    best_mismatches = input_len + 1
+    for offset in range(msa_len - input_len + 1):
+        window = msa_query_types[offset:offset + input_len]
+        mm = np.sum(input_types != window)
+        if mm == 0:
+            best_offset = offset
+            best_mismatches = 0
+            break
+        if mm < best_mismatches:
+            best_offset = offset
+            best_mismatches = mm
+
+    # Accept if <= 5% mismatches (MET/UNK, selenomethionine, etc.)
+    if best_offset < 0 or best_mismatches > max(1, input_len * 0.05):
+        print(
+            warning, "trim_failed",
+            f"input_len={input_len}, msa_len={msa_len}, "
+            f"best_mismatches={best_mismatches}",
+            record_id,
+        )
+        return dummy_msa(input_residues)
+
+    if best_mismatches > 0:
+        print(
+            f"Note: MSA trimmed with {best_mismatches} mismatches "
+            f"(offset={best_offset}) for {record_id}"
+        )
+
+    old_residues = chain_msa.residues
+    old_sequences = chain_msa.sequences
+    old_deletions = chain_msa.deletions
+
+    new_residues = []
+    new_sequences = []
+    new_deletions = []
+
+    for seq in old_sequences:
+        old_start = seq["res_start"]
+        old_end = seq["res_end"]
+        seq_len = old_end - old_start
+
+        if seq_len != msa_len:
+            continue
+
+        new_start = len(new_residues)
+        trimmed = old_residues[old_start + best_offset : old_start + best_offset + input_len]
+        new_residues.extend(trimmed)
+        new_end = len(new_residues)
+
+        del_start = seq["del_start"]
+        del_end = seq["del_end"]
+        new_del_start = len(new_deletions)
+        for di in range(del_start, del_end):
+            d = old_deletions[di]
+            res_idx = d["res_idx"]
+            if best_offset <= res_idx < best_offset + input_len:
+                new_deletions.append((res_idx - best_offset, d["deletion"]))
+        new_del_end = len(new_deletions)
+
+        new_sequences.append((
+            seq["seq_idx"], seq["taxonomy"],
+            new_start, new_end,
+            new_del_start, new_del_end,
+        ))
+
+    if not new_sequences:
+        return dummy_msa(input_residues)
+
+    result = MSA(
+        residues=np.array(new_residues, dtype=MSAResidue),
+        deletions=np.array(new_deletions, dtype=MSADeletion) if new_deletions else np.array([], dtype=MSADeletion),
+        sequences=np.array(new_sequences, dtype=MSASequence),
+    )
+
+    # Overwrite query residue types with input types (handle minor mismatches)
+    first = result.sequences[0]
+    result.residues[first["res_start"]:first["res_end"]]["res_type"] = input_types
+
+    return result
+
+
 def construct_paired_msa(  # noqa: C901, PLR0915, PLR0912
     data: Tokenized,
     max_seqs: int,
@@ -178,13 +279,50 @@ def construct_paired_msa(  # noqa: C901, PLR0915, PLR0912
     chain_ids = np.unique(data.tokens["asym_id"])
 
     # Get relevant MSA, and create a dummy for chains without
-    msa = {k: data.msa[k] for k in chain_ids if k in data.msa}
+    msa: dict[int, MSA] = {}
     for chain_id in chain_ids:
-        if chain_id not in msa:
-            chain = data.structure.chains[chain_id]
-            res_start = chain["res_idx"]
-            res_end = res_start + chain["res_num"]
-            residues = data.structure.residues[res_start:res_end]
+        chain = data.structure.chains[chain_id]
+        res_start = chain["res_idx"]
+        res_end = res_start + chain["res_num"]
+        residues = data.structure.residues[res_start:res_end]
+
+        if chain_id in data.msa:
+            msa[chain_id] = data.msa[chain_id]
+
+            first = data.msa[chain_id].sequences[0]
+            first_start = first["res_start"]
+            first_end = first["res_end"]
+            msa_residues = data.msa[chain_id].residues
+            first_residues = msa_residues[first_start:first_end]
+
+            warning = "Warning: MSA does not match input sequence, creating dummy."
+            input_types = residues["res_type"]
+            msa_types = first_residues["res_type"]
+
+            if len(input_types) == len(msa_types):
+                mismatches = input_types != msa_types
+                if mismatches.sum().item():
+                    idx = np.where(mismatches)[0]
+                    is_met = input_types[idx] == const.token_ids["MET"]
+                    is_unk = input_types[idx] == const.token_ids["UNK"]
+                    is_msa_unk = msa_types[idx] == const.token_ids["UNK"]
+                    if (np.all(is_met) and np.all(is_msa_unk)) or np.all(is_unk):
+                        msa_residues[first_start:first_end]["res_type"] = input_types
+                    else:
+                        record_id = data.record.id if data.record else "unknown"
+                        print(warning, "1", input_types, msa_types, record_id)
+                        msa[chain_id] = dummy_msa(residues)
+            elif len(input_types) < len(msa_types):
+                record_id = data.record.id if data.record else "unknown"
+                msa[chain_id] = _trim_msa_to_input(
+                    data.msa[chain_id], residues, input_types, msa_types,
+                    first_start, record_id, warning,
+                )
+            else:
+                record_id = data.record.id if data.record else "unknown"
+                print(warning, "2", input_types, msa_types, record_id)
+                msa[chain_id] = dummy_msa(residues)
+        else:
             msa[chain_id] = dummy_msa(residues)
 
     # Map taxonomies to (chain_id, seq_idx)
