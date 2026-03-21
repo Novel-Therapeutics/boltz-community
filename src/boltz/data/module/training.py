@@ -551,19 +551,15 @@ class BoltzTrainingDataModule(pl.LightningDataModule):
                 train_records = manifest.records
                 val_records = []
 
-            # Filter training records
+            # Filter training records (global + dataset-specific in one pass)
+            _all_filters = list(cfg.filters)
+            if data_config.filters is not None:
+                _all_filters.extend(data_config.filters)
             train_records = [
                 record
                 for record in train_records
-                if all(f.filter(record) for f in cfg.filters)
+                if all(f.filter(record) for f in _all_filters)
             ]
-            # Filter training records
-            if data_config.filters is not None:
-                train_records = [
-                    record
-                    for record in train_records
-                    if all(f.filter(record) for f in data_config.filters)
-                ]
 
             # Create train dataset
             train_manifest = Manifest(train_records)

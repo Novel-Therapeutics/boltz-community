@@ -400,14 +400,10 @@ def compute_plddt_mae(
     pred_token_coords = torch.bmm(token_to_rep_atom, pred_atom_coords)
 
     # compute true lddt
-    true_d = torch.cdist(
-        true_token_coords,
-        torch.bmm(R_set_to_rep_atom, true_atom_coords),
-    )
-    pred_d = torch.cdist(
-        pred_token_coords,
-        torch.bmm(R_set_to_rep_atom, pred_atom_coords),
-    )
+    true_R_coords = torch.bmm(R_set_to_rep_atom, true_atom_coords)
+    pred_R_coords = torch.bmm(R_set_to_rep_atom, pred_atom_coords)
+    true_d = torch.cdist(true_token_coords, true_R_coords)
+    pred_d = torch.cdist(pred_token_coords, pred_R_coords)
 
     pair_mask = atom_mask.unsqueeze(-1) * atom_mask.unsqueeze(-2)
     pair_mask = (

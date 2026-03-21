@@ -107,20 +107,42 @@ def get_symmetries(mols: dict[str, Mol], cache: Optional[dict] = None) -> dict: 
                 symmetries[key] = cache[mol_id]
                 continue
         try:
-            sym = pickle.loads(bytes.fromhex(mol.GetProp("symmetries")))  # noqa: S301
+            # Batch-deserialize all hex-encoded properties in a single pass
+            _prop_names = []
+            _prop_hexes = []
+            for _pn in (
+                "symmetries",
+                "pb_edge_index",
+                "pb_lower_bounds",
+                "pb_upper_bounds",
+                "pb_bond_mask",
+                "pb_angle_mask",
+                "chiral_atom_index",
+                "chiral_check_mask",
+                "chiral_atom_orientations",
+                "stereo_bond_index",
+                "stereo_check_mask",
+                "stereo_bond_orientations",
+                "aromatic_5_ring_index",
+                "aromatic_6_ring_index",
+                "planar_double_bond_index",
+            ):
+                if mol.HasProp(_pn):
+                    _prop_names.append(_pn)
+                    _prop_hexes.append(mol.GetProp(_pn))
+            _props = {
+                _pn: pickle.loads(bytes.fromhex(_ph))  # noqa: S301
+                for _pn, _ph in zip(_prop_names, _prop_hexes)
+            }
 
-            if mol.HasProp("pb_edge_index"):
-                edge_index = pickle.loads(
-                    bytes.fromhex(mol.GetProp("pb_edge_index"))
-                ).astype(np.int64)  # noqa: S301
-                lower_bounds = pickle.loads(
-                    bytes.fromhex(mol.GetProp("pb_lower_bounds"))
-                )  # noqa: S301
-                upper_bounds = pickle.loads(
-                    bytes.fromhex(mol.GetProp("pb_upper_bounds"))
-                )  # noqa: S301
-                bond_mask = pickle.loads(bytes.fromhex(mol.GetProp("pb_bond_mask")))  # noqa: S301
-                angle_mask = pickle.loads(bytes.fromhex(mol.GetProp("pb_angle_mask")))  # noqa: S301
+            sym = _props["symmetries"]
+
+            if "pb_edge_index" in _props:
+                edge_index = _props["pb_edge_index"].astype(np.int64)
+                lower_bounds = _props["pb_lower_bounds"]
+                upper_bounds = _props["pb_upper_bounds"]
+                bond_mask = _props["pb_bond_mask"]
+                angle_mask = _props["pb_angle_mask"]
             else:
                 edge_index = np.empty((2, 0), dtype=np.int64)
                 lower_bounds = np.array([], dtype=np.float32)
@@ -128,52 +150,34 @@ def get_symmetries(mols: dict[str, Mol], cache: Optional[dict] = None) -> dict: 
                 bond_mask = np.array([], dtype=np.float32)
                 angle_mask = np.array([], dtype=np.float32)
 
-            if mol.HasProp("chiral_atom_index"):
-                chiral_atom_index = pickle.loads(
-                    bytes.fromhex(mol.GetProp("chiral_atom_index"))
-                ).astype(np.int64)
-                chiral_check_mask = pickle.loads(
-                    bytes.fromhex(mol.GetProp("chiral_check_mask"))
-                ).astype(np.int64)
-                chiral_atom_orientations = pickle.loads(
-                    bytes.fromhex(mol.GetProp("chiral_atom_orientations"))
-                )
+            if "chiral_atom_index" in _props:
+                chiral_atom_index = _props["chiral_atom_index"].astype(np.int64)
+                chiral_check_mask = _props["chiral_check_mask"].astype(np.int64)
+                chiral_atom_orientations = _props["chiral_atom_orientations"]
             else:
                 chiral_atom_index = np.empty((4, 0), dtype=np.int64)
                 chiral_check_mask = np.array([], dtype=bool)
                 chiral_atom_orientations = np.array([], dtype=bool)
 
-            if mol.HasProp("stereo_bond_index"):
-                stereo_bond_index = pickle.loads(
-                    bytes.fromhex(mol.GetProp("stereo_bond_index"))
-                ).astype(np.int64)
-                stereo_check_mask = pickle.loads(
-                    bytes.fromhex(mol.GetProp("stereo_check_mask"))
-                ).astype(np.int64)
-                stereo_bond_orientations = pickle.loads(
-                    bytes.fromhex(mol.GetProp("stereo_bond_orientations"))
-                )
+            if "stereo_bond_index" in _props:
+                stereo_bond_index = _props["stereo_bond_index"].astype(np.int64)
+                stereo_check_mask = _props["stereo_check_mask"].astype(np.int64)
+                stereo_bond_orientations = _props["stereo_bond_orientations"]
             else:
                 stereo_bond_index = np.empty((4, 0), dtype=np.int64)
                 stereo_check_mask = np.array([], dtype=bool)
                 stereo_bond_orientations = np.array([], dtype=bool)
 
-            if mol.HasProp("aromatic_5_ring_index"):
-                aromatic_5_ring_index = pickle.loads(
-                    bytes.fromhex(mol.GetProp("aromatic_5_ring_index"))
-                ).astype(np.int64)
+            if "aromatic_5_ring_index" in _props:
+                aromatic_5_ring_index = _props["aromatic_5_ring_index"].astype(np.int64)
             else:
                 aromatic_5_ring_index = np.empty((5, 0), dtype=np.int64)
-            if mol.HasProp("aromatic_6_ring_index"):
-                aromatic_6_ring_index = pickle.loads(
-                    bytes.fromhex(mol.GetProp("aromatic_6_ring_index"))
-                ).astype(np.int64)
+            if "aromatic_6_ring_index" in _props:
+                aromatic_6_ring_index = _props["aromatic_6_ring_index"].astype(np.int64)
             else:
                 aromatic_6_ring_index = np.empty((6, 0), dtype=np.int64)
-            if mol.HasProp("planar_double_bond_index"):
-                planar_double_bond_index = pickle.loads(
-                    bytes.fromhex(mol.GetProp("planar_double_bond_index"))
-                ).astype(np.int64)
+            if "planar_double_bond_index" in _props:
+                planar_double_bond_index = _props["planar_double_bond_index"].astype(np.int64)
             else:
                 planar_double_bond_index = np.empty((6, 0), dtype=np.int64)
 

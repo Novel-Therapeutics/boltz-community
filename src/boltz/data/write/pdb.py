@@ -113,13 +113,14 @@ def to_pdb(
                     )
 
                 # PDB is a columnar format, every space matters here!
+                # Format in a single pass: 80 chars wide per PDB spec.
                 atom_line = (
                     f"{record_type:<6}{atom_index:>5} {name:<4}{alt_loc:>1}"
                     f"{res_name_3:>3} {chain_tag:>1}"
                     f"{residue_index:>4}{insertion_code:>1}   "
                     f"{pos[0]:>8.3f}{pos[1]:>8.3f}{pos[2]:>8.3f}"
                     f"{occupancy:>6.2f}{b_factor:>6.2f}          "
-                    f"{element:>2}{charge:>2}"
+                    f"{element:>2}{charge:<2}"
                 )
                 pdb_lines.append(atom_line)
                 atom_reindex_ter.append(atom_index)
@@ -137,7 +138,7 @@ def to_pdb(
                 f"{res_name_3:>3} "
                 f"{chain_tag:>1}{residue_index:>4}"
             )
-            pdb_lines.append(chain_termination_line)
+            pdb_lines.append(f"{chain_termination_line:<80}")
             atom_index += 1
 
     # Dump CONECT records.
@@ -153,9 +154,8 @@ def to_pdb(
         atom1_idx = atom_reindex_ter[bond["atom_1"]]
         atom2_idx = atom_reindex_ter[bond["atom_2"]]
         conect_line = f"CONECT{atom1_idx:>5}{atom2_idx:>5}"
-        pdb_lines.append(conect_line)
+        pdb_lines.append(f"{conect_line:<80}")
 
-    pdb_lines.append("END")
+    pdb_lines.append(f"{'END':<80}")
     pdb_lines.append("")
-    pdb_lines = [line.ljust(80) for line in pdb_lines]
     return "\n".join(pdb_lines)

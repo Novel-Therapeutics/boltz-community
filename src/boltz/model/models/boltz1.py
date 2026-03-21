@@ -377,19 +377,20 @@ class Boltz1(LightningModule):
             )
 
         if self.confidence_prediction:
+            _detach = self.training
             dict_out.update(
                 self.confidence_module(
-                    s_inputs=s_inputs.detach(),
-                    s=s.detach(),
-                    z=z.detach(),
+                    s_inputs=s_inputs.detach() if _detach else s_inputs,
+                    s=s.detach() if _detach else s,
+                    z=z.detach() if _detach else z,
                     s_diffusion=(
                         dict_out["diff_token_repr"]
                         if self.confidence_module.use_s_diffusion
                         else None
                     ),
-                    x_pred=dict_out["sample_atom_coords"].detach(),
+                    x_pred=dict_out["sample_atom_coords"].detach() if _detach else dict_out["sample_atom_coords"],
                     feats=feats,
-                    pred_distogram_logits=dict_out["pdistogram"].detach(),
+                    pred_distogram_logits=dict_out["pdistogram"].detach() if _detach else dict_out["pdistogram"],
                     multiplicity=diffusion_samples,
                     run_sequentially=run_confidence_sequentially,
                     use_kernels=self.use_kernels,

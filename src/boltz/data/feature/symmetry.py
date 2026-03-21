@@ -188,8 +188,8 @@ def minimum_symmetry_coords(
                 best_true_resolved_mask = new_true_resolved_mask
 
         # greedily update best coordinates after each amino acid
-        true_coords = best_true_coords.clone()
-        true_resolved_mask = best_true_resolved_mask.clone()
+        true_coords = best_true_coords
+        true_resolved_mask = best_true_resolved_mask
 
     # Recomputing alignment
     rmsd, true_coords, best_align_weights = weighted_minimum_rmsd_single(
@@ -230,8 +230,8 @@ def minimum_symmetry_coords(
                 best_rmsd = rmsd
                 best_true_resolved_mask = new_true_resolved_mask
 
-        true_coords = best_true_coords.clone()
-        true_resolved_mask = best_true_resolved_mask.clone()
+        true_coords = best_true_coords
+        true_resolved_mask = best_true_resolved_mask
 
     return best_true_coords, best_rmsd, best_true_resolved_mask.unsqueeze(0)
 
@@ -349,8 +349,8 @@ def minimum_lddt_symmetry_coords(
                 best_true_resolved_mask = new_true_resolved_mask
 
         # greedily update best coordinates after each amino acid
-        true_coords = best_true_coords.clone()
-        true_resolved_mask = best_true_resolved_mask.clone()
+        true_coords = best_true_coords
+        true_resolved_mask = best_true_resolved_mask
 
     # Recomputing alignment
     true_coords = pad_dim(true_coords, 1, coords.shape[1] - true_coords.shape[1])

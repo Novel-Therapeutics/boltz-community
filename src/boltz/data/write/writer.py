@@ -179,71 +179,61 @@ class BoltzWriter(BasePredictionWriter):
                     path = struct_dir / f"pre_affinity_{record.id}.npz"
                     np.savez_compressed(path, **asdict(new_structure))
 
-                # Save confidence summary
+                # Save confidence summary, plddt, pae, pde
+                # Pre-compute numpy arrays to avoid redundant .cpu().numpy()
+                # calls and reduce the number of separate file operations.
+                rank_suffix = f"{record.id}_model_{idx_to_rank[model_idx]}"
+
                 if "plddt" in prediction:
-                    path = (
-                        struct_dir
-                        / f"confidence_{record.id}_model_{idx_to_rank[model_idx]}.json"
-                    )
-                    confidence_summary_dict = {}
-                    for key in [
-                        "confidence_score",
-                        "ptm",
-                        "iptm",
-                        "ligand_iptm",
-                        "protein_iptm",
-                        "complex_plddt",
-                        "complex_iplddt",
-                        "complex_pde",
-                        "complex_ipde",
-                    ]:
-                        confidence_summary_dict[key] = prediction[key][model_idx].item()
+                    plddt_np = prediction["plddt"][model_idx].cpu().numpy()
+
+                    confidence_summary_dict = {
+                        key: prediction[key][model_idx].item()
+                        for key in (
+                            "confidence_score",
+                            "ptm",
+                            "iptm",
+                            "ligand_iptm",
+                            "protein_iptm",
+                            "complex_plddt",
+                            "complex_iplddt",
+                            "complex_pde",
+                            "complex_ipde",
+                        )
+                    }
+                    pair_chains = prediction["pair_chains_iptm"]
                     confidence_summary_dict["chains_ptm"] = {
-                        idx: prediction["pair_chains_iptm"][idx][idx][model_idx].item()
-                        for idx in prediction["pair_chains_iptm"]
+                        idx: pair_chains[idx][idx][model_idx].item()
+                        for idx in pair_chains
                     }
                     confidence_summary_dict["pair_chains_iptm"] = {
                         idx1: {
-                            idx2: prediction["pair_chains_iptm"][idx1][idx2][
-                                model_idx
-                            ].item()
-                            for idx2 in prediction["pair_chains_iptm"][idx1]
+                            idx2: pair_chains[idx1][idx2][model_idx].item()
+                            for idx2 in pair_chains[idx1]
                         }
-                        for idx1 in prediction["pair_chains_iptm"]
+                        for idx1 in pair_chains
                     }
+                    path = struct_dir / f"confidence_{rank_suffix}.json"
                     with path.open("w") as f:
-                        f.write(
-                            json.dumps(
-                                confidence_summary_dict,
-                                indent=4,
-                            )
-                        )
+                        json.dump(confidence_summary_dict, f, indent=4)
 
                     # Save plddt
-                    plddt = prediction["plddt"][model_idx]
-                    path = (
-                        struct_dir
-                        / f"plddt_{record.id}_model_{idx_to_rank[model_idx]}.npz"
+                    np.savez_compressed(
+                        struct_dir / f"plddt_{rank_suffix}.npz",
+                        plddt=plddt_np,
                     )
-                    np.savez_compressed(path, plddt=plddt.cpu().numpy())
 
-                # Save pae
                 if "pae" in prediction:
-                    pae = prediction["pae"][model_idx]
-                    path = (
-                        struct_dir
-                        / f"pae_{record.id}_model_{idx_to_rank[model_idx]}.npz"
+                    np.savez_compressed(
+                        struct_dir / f"pae_{rank_suffix}.npz",
+                        pae=prediction["pae"][model_idx].cpu().numpy(),
                     )
-                    np.savez_compressed(path, pae=pae.cpu().numpy())
 
-                # Save pde
                 if "pde" in prediction:
-                    pde = prediction["pde"][model_idx]
-                    path = (
-                        struct_dir
-                        / f"pde_{record.id}_model_{idx_to_rank[model_idx]}.npz"
+                    np.savez_compressed(
+                        struct_dir / f"pde_{rank_suffix}.npz",
+                        pde=prediction["pde"][model_idx].cpu().numpy(),
                     )
-                    np.savez_compressed(path, pde=pde.cpu().numpy())
                 
             # Save embeddings
             if self.write_embeddings and "s" in prediction and "z" in prediction:
