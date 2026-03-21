@@ -225,9 +225,11 @@ _run_ost() {
 }
 
 _kill_orphans() {
-    # Kill any leftover boltz/python GPU processes from previous runs
+    # Kill leftover boltz/python GPU processes from previous benchmark runs.
+    # Scoped to processes whose command line contains BENCH_DIR to avoid
+    # terminating unrelated Boltz jobs running on the same machine.
     local ORPHANS
-    ORPHANS=$(ps aux | grep -E '[b]oltz predict|[p]ython.*boltz' | grep -v "$$" | awk '{print $2}' || true)
+    ORPHANS=$(ps aux | grep -E '[b]oltz predict|[p]ython.*boltz' | grep "${BENCH_DIR}" | grep -v "$$" | awk '{print $2}' || true)
     if [ -n "${ORPHANS}" ]; then
         for PID in ${ORPHANS}; do
             warn "Killing orphaned process ${PID}"
@@ -355,6 +357,17 @@ run_dev() {
 
     _check_triton
 
+    DEV_PARAMS_FILE="${DEV_DIR}/.params"
+    DEV_CURRENT_PARAMS="${DEV_N} ${DEV_MAX_RESIDUES}"
+    DEV_STALE=0
+    if [ -d "${DEV_DIR}/queries" ] && [ -f "${DEV_PARAMS_FILE}" ]; then
+        if [ "$(cat "${DEV_PARAMS_FILE}")" != "${DEV_CURRENT_PARAMS}" ]; then
+            info "--targets or --max-residues changed; re-curating dev set..."
+            rm -rf "${DEV_DIR}/queries" "${DEV_DIR}/msa" "${DEV_PARAMS_FILE}"
+            DEV_STALE=1
+        fi
+    fi
+
     if [ ! -d "${DEV_DIR}/queries" ]; then
         info "Curating dev target set..."
 
@@ -391,9 +404,11 @@ run_dev() {
             done
         done < "${DEV_LIST}"
 
+        # Record the params used for this curation so future runs can detect changes
+        echo "${DEV_CURRENT_PARAMS}" > "${DEV_PARAMS_FILE}"
         ok "Prepared $(ls "${DEV_DIR}/queries/" | wc -l) dev inputs"
     else
-        info "Dev inputs already prepared"
+        info "Dev inputs already prepared (targets=${DEV_N}, max-residues=${DEV_MAX_RESIDUES})"
     fi
 
     ACTUAL_N=$(ls "${DEV_DIR}/queries/" | wc -l)
@@ -623,8 +638,6 @@ run_evaluate() {
         fi
     done
 
-    # Auto-clean after evaluation
-    run_clean
 }
 
 
