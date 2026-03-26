@@ -45,7 +45,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Deferred heavy imports (torch, rdkit, pytorch-lightning) so `boltz.main` loads instantly for CLI help and input validation
 - `--devices` now accepts a comma-separated list of specific GPU device IDs in addition to a device count (e.g. `--devices 0,1` targets GPUs 0 and 1; use `CUDA_VISIBLE_DEVICES=1 boltz predict ...` to target a single GPU by index)
 
-**Performance (~5% faster inference on GPU):**
+**Performance improvements:**
 - Model weights now load directly to GPU instead of CPU-then-transfer
 - Cached molecule file reads and symmetry deserialization across samples
 - Removed dead O(n_tokens × n_chains) loop in pocket distance computation
@@ -86,17 +86,6 @@ boltz predict input.yaml --accelerator mps --use_msa_server
 ```
 
 MPS mode automatically uses float32 precision and single-device execution. Performance is slower than CUDA but significantly faster than CPU.
-
-Early benchmark on an M3 MacBook Air (single data point — community testing welcome):
-
-| Case | T4 GPU (bf16) | M3 Air MPS (f32) | Ratio |
-|------|---------------|-------------------|-------|
-| 10-res peptide + ligand (affinity) | 107s | 114s | 1.1x |
-| 163-res protein + ligand (affinity) | 144s | 251s | 1.7x |
-| 260-res protein + ligand (affinity) | 193s | 383s | 2.0x |
-| 163-res protein (structure only) | 57s | 74s | 1.3x |
-
-The gap grows with protein size, likely due to attention layers scaling quadratically without bf16. If you run benchmarks on other Apple Silicon chips, please share your results in an issue!
 
 ---
 
@@ -141,16 +130,6 @@ There are two main predictions in the affinity output: `affinity_pred_value` and
 
 When using the `--use_msa_server` option with a server that requires authentication, you can provide credentials in one of two ways. More information is available in our [prediction instructions](docs/prediction.md#authentication-to-msa-server).
  
-## Evaluation
-
-⚠️ **Coming soon: updated evaluation code for Boltz-2!**
-
-To encourage reproducibility and facilitate comparison with other models, on top of the existing Boltz-1 evaluation pipeline, we will soon provide the evaluation scripts and structural predictions for Boltz-2, Boltz-1, Chai-1 and AlphaFold3 on our test benchmark dataset, and our affinity predictions on the FEP+ benchmark, CASP16 and our MF-PCBA test set.
-
-![Affinity test sets evaluations](docs/pearson_plot.png)
-![Test set evaluations](docs/plot_test_boltz2.png)
-
-
 ## Training
 
 ⚠️ **Coming soon: updated training code for Boltz-2!**

@@ -4,9 +4,6 @@ import gzip
 import tempfile
 from pathlib import Path
 
-# test_kernels.py is a GPU benchmarking script, not a test module.
-collect_ignore = ["test_kernels.py"]
-
 import pytest
 
 try:
