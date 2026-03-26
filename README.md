@@ -37,6 +37,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed relative MSA paths resolved from CWD instead of input file directory ([#500](https://github.com/jwohlwend/boltz/pull/500))
 - Fixed affinity prediction crashing when structure prediction fails (e.g. covalent ligands, OOM) — now skips affected records with a warning ([#620](https://github.com/jwohlwend/boltz/issues/620), [#624](https://github.com/jwohlwend/boltz/issues/624))
 - Fixed Boltz-2 checkpoint loading crash due to extra `mse_rotational_alignment` kwarg ([#644](https://github.com/jwohlwend/boltz/issues/644))
+- Fixed empty checkpoint files causing cryptic `load_from_checkpoint` aborts — now re-downloads empty cached weights and raises a clear error before model load ([#664](https://github.com/jwohlwend/boltz/issues/664))
 - Fixed CPU inference producing distorted structures with wrong bond lengths — Boltz-2 was incorrectly using `bf16-mixed` precision on CPU; now forces float32 ([#653](https://github.com/jwohlwend/boltz/issues/653))
 - Fixed MSA discarded as "does not match input sequence" when pre-computed MSAs are aligned to a full UniProt sequence but the input uses a shorter PDB construct — Boltz now finds the construct as a contiguous subsequence within the MSA query and trims all MSA rows accordingly, instead of falling back to a dummy single-sequence MSA. Tolerates up to 5% mismatches (selenomethionine substitutions, expression tags, minor construct mutations). Applies to both Boltz-1 and Boltz-2.
 
