@@ -4,9 +4,10 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import click
 import pytest
 
-from boltz.main import _available_cpu_count, predict
+from boltz.main import _available_cpu_count, _validate_checkpoint_for_load, predict
 
 
 class TestSubsampleMsaDefault:
@@ -106,6 +107,73 @@ class TestDownloadBoltz2:
 
             download_boltz2(tmp_path)
             mock_download.assert_called_once()
+
+
+class TestCheckpointValidation:
+    """Checkpoint validation should fail early with clear errors."""
+
+    def test_rejects_empty_checkpoint_before_load(self, tmp_path):
+        checkpoint = tmp_path / "boltz2_conf.ckpt"
+        checkpoint.write_bytes(b"")
+
+        with pytest.raises(click.ClickException, match="checkpoint is empty"):
+            _validate_checkpoint_for_load(checkpoint, "Boltz-2 weights")
+
+    def test_accepts_non_empty_checkpoint(self, tmp_path):
+        checkpoint = tmp_path / "boltz2_conf.ckpt"
+        checkpoint.write_bytes(b"not-empty")
+
+        _validate_checkpoint_for_load(checkpoint, "Boltz-2 weights")
+
+
+class TestDownloadBoltz1CheckpointValidation:
+    """download_boltz1 should recover from empty cached/downloaded checkpoints."""
+
+    def test_redownloads_existing_empty_checkpoint(self, tmp_path):
+        from boltz.main import download_boltz1
+
+        (tmp_path / "ccd.pkl").write_text("fake-ccd")
+        checkpoint = tmp_path / "boltz1_conf.ckpt"
+        checkpoint.write_bytes(b"")
+
+        def fake_download(_url, dest):
+            Path(dest).write_bytes(b"fresh-weights")
+
+        with patch("boltz.main._download", side_effect=fake_download) as mock_download:
+            download_boltz1(tmp_path)
+
+        assert mock_download.call_count == 1
+        assert checkpoint.read_bytes() == b"fresh-weights"
+
+    def test_retries_when_first_download_is_empty(self, tmp_path):
+        from boltz.main import download_boltz1
+
+        (tmp_path / "ccd.pkl").write_text("fake-ccd")
+        checkpoint = tmp_path / "boltz1_conf.ckpt"
+        call_count = 0
+
+        def fake_download(_url, dest):
+            nonlocal call_count
+            call_count += 1
+            Path(dest).write_bytes(b"" if call_count == 1 else b"fresh-weights")
+
+        with patch("boltz.main._download", side_effect=fake_download):
+            download_boltz1(tmp_path)
+
+        assert call_count == 2
+        assert checkpoint.read_bytes() == b"fresh-weights"
+
+    def test_raises_clear_error_when_all_downloads_are_empty(self, tmp_path):
+        from boltz.main import download_boltz1
+
+        (tmp_path / "ccd.pkl").write_text("fake-ccd")
+
+        def fake_download(_url, dest):
+            Path(dest).write_bytes(b"")
+
+        with patch("boltz.main._download", side_effect=fake_download):
+            with pytest.raises(RuntimeError, match="checkpoint is empty"):
+                download_boltz1(tmp_path)
 
 
 class TestCheckInputs:

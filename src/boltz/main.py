@@ -45,6 +45,67 @@ BOLTZ2_AFFINITY_URL_WITH_FALLBACK = [
 ]
 
 
+def _resolved_path_for_message(path: Path) -> Path:
+    """Return a best-effort resolved path for user-facing error messages."""
+    try:
+        return path.expanduser().resolve()
+    except OSError:
+        return path.expanduser()
+
+
+def _checkpoint_needs_download(path: Path, description: str) -> bool:
+    """Return True when a cached checkpoint should be downloaded again."""
+    resolved = _resolved_path_for_message(path)
+
+    if not path.exists():
+        return True
+    if not path.is_file():
+        msg = f"{description} checkpoint path is not a file: {resolved}"
+        raise RuntimeError(msg)
+
+    try:
+        size = path.stat().st_size
+    except OSError as e:
+        msg = f"Could not read {description} checkpoint at {resolved}: {e}"
+        raise RuntimeError(msg) from e
+
+    if size == 0:
+        click.echo(f"Found empty {description} checkpoint at {resolved}; re-downloading.")
+        return True
+
+    return False
+
+
+def _validate_checkpoint_for_load(path: Path, description: str) -> None:
+    """Raise a clear CLI error for missing or empty checkpoint files."""
+    resolved = _resolved_path_for_message(path)
+
+    if not path.exists():
+        msg = (
+            f"{description} checkpoint not found at {resolved}. "
+            "Delete any partial file and retry so boltz can re-download it, "
+            "or pass a valid checkpoint path."
+        )
+        raise click.ClickException(msg)
+    if not path.is_file():
+        msg = f"{description} checkpoint path is not a file: {resolved}"
+        raise click.ClickException(msg)
+
+    try:
+        size = path.stat().st_size
+    except OSError as e:
+        msg = f"Could not read {description} checkpoint at {resolved}: {e}"
+        raise click.ClickException(msg) from e
+
+    if size == 0:
+        msg = (
+            f"{description} checkpoint is empty: {resolved}. "
+            "Delete the file and retry so boltz can re-download it, "
+            "or pass a valid checkpoint path."
+        )
+        raise click.ClickException(msg)
+
+
 def _available_cpu_count() -> int:
     """Return the number of CPUs available to this process.
 
@@ -194,7 +255,7 @@ def download_boltz1(cache: Path) -> None:
         _download(CCD_URL, str(ccd))
     # Download model
     model = cache / "boltz1_conf.ckpt"
-    if not model.exists():
+    if _checkpoint_needs_download(model, "Boltz-1 weights"):
         click.echo(
             f"Downloading the model weights to {model}. You may "
             "change the cache directory with the --cache flag."
@@ -202,6 +263,7 @@ def download_boltz1(cache: Path) -> None:
         for i, url in enumerate(BOLTZ1_URL_WITH_FALLBACK):
             try:
                 _download(url, str(model))
+                _validate_checkpoint_for_load(model, "Boltz-1 weights")
                 break
             except Exception as e:  # noqa: BLE001
                 if i == len(BOLTZ1_URL_WITH_FALLBACK) - 1:
@@ -241,7 +303,7 @@ def download_boltz2(cache: Path) -> None:
 
     # Download model
     model = cache / "boltz2_conf.ckpt"
-    if not model.exists():
+    if _checkpoint_needs_download(model, "Boltz-2 weights"):
         click.echo(
             f"Downloading the Boltz-2 weights to {model}. You may "
             "change the cache directory with the --cache flag."
@@ -249,6 +311,7 @@ def download_boltz2(cache: Path) -> None:
         for i, url in enumerate(BOLTZ2_URL_WITH_FALLBACK):
             try:
                 _download(url, str(model))
+                _validate_checkpoint_for_load(model, "Boltz-2 weights")
                 break
             except Exception as e:  # noqa: BLE001
                 if i == len(BOLTZ2_URL_WITH_FALLBACK) - 1:
@@ -258,7 +321,7 @@ def download_boltz2(cache: Path) -> None:
 
     # Download affinity model
     affinity_model = cache / "boltz2_aff.ckpt"
-    if not affinity_model.exists():
+    if _checkpoint_needs_download(affinity_model, "Boltz-2 affinity weights"):
         click.echo(
             f"Downloading the Boltz-2 affinity weights to {affinity_model}. You may "
             "change the cache directory with the --cache flag."
@@ -266,6 +329,9 @@ def download_boltz2(cache: Path) -> None:
         for i, url in enumerate(BOLTZ2_AFFINITY_URL_WITH_FALLBACK):
             try:
                 _download(url, str(affinity_model))
+                _validate_checkpoint_for_load(
+                    affinity_model, "Boltz-2 affinity weights"
+                )
                 break
             except Exception as e:  # noqa: BLE001
                 if i == len(BOLTZ2_AFFINITY_URL_WITH_FALLBACK) - 1:
@@ -1472,6 +1538,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
                 checkpoint = cache / "boltz2_conf.ckpt"
             else:
                 checkpoint = cache / "boltz1_conf.ckpt"
+        checkpoint = Path(checkpoint).expanduser()
 
         predict_args = {
             "recycling_steps": recycling_steps,
@@ -1488,6 +1555,10 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         steering_args.physical_guidance_update = use_potentials
 
         model_cls = Boltz2 if model == "boltz2" else Boltz1
+        if model == "boltz2":
+            _validate_checkpoint_for_load(checkpoint, "Boltz-2 weights")
+        else:
+            _validate_checkpoint_for_load(checkpoint, "Boltz-1 weights")
         model_module = model_cls.load_from_checkpoint(
             checkpoint,
             strict=True,
@@ -1567,12 +1638,16 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         # Load affinity model
         if affinity_checkpoint is None:
             affinity_checkpoint = cache / "boltz2_aff.ckpt"
+        affinity_checkpoint = Path(affinity_checkpoint).expanduser()
 
         steering_args = BoltzSteeringParams()
         steering_args.fk_steering = False
         steering_args.physical_guidance_update = False
         steering_args.contact_guidance_update = False
-        
+
+        _validate_checkpoint_for_load(
+            affinity_checkpoint, "Boltz-2 affinity weights"
+        )
         model_module = Boltz2.load_from_checkpoint(
             affinity_checkpoint,
             strict=True,
