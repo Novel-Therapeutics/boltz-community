@@ -264,8 +264,6 @@ def small_feats_dict():
 @pytest.fixture
 def expected_sample_chunk_sizes():
     """Build the expected per-call chunk sizes for a sampled denoising loop."""
-    pytest.importorskip("torch")
-
     def _expected_sample_chunk_sizes(
         multiplicity: int, max_parallel_samples: int, num_steps: int
     ) -> list[int]:
@@ -281,12 +279,7 @@ def expected_sample_chunk_sizes():
 @pytest.fixture
 def v1_atom_diffusion_factory():
     """Build a lightweight Boltz-1 diffusion module that records sampled batch sizes."""
-    pytest.importorskip("torch")
-
-    try:
-        from boltz.model.modules.diffusion import AtomDiffusion
-    except ImportError as e:
-        pytest.skip(f"Cannot import AtomDiffusion: {e}")
+    from boltz.model.modules.diffusion import AtomDiffusion
 
     def _make_v1_atom_diffusion(call_sizes: list[int]):
         class RecordingV1ScoreModel(torch.nn.Module):
@@ -333,12 +326,7 @@ def v1_atom_diffusion_factory():
 @pytest.fixture
 def v2_atom_diffusion_factory():
     """Build a lightweight Boltz-2 diffusion module that records sampled batch sizes."""
-    pytest.importorskip("torch")
-
-    try:
-        from boltz.model.modules.diffusionv2 import AtomDiffusion
-    except ImportError as e:
-        pytest.skip(f"Cannot import AtomDiffusion: {e}")
+    from boltz.model.modules.diffusionv2 import AtomDiffusion
 
     def _make_v2_atom_diffusion(call_sizes: list[int]):
         class RecordingV2ScoreModel(torch.nn.Module):
