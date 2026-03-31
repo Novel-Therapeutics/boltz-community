@@ -2,7 +2,6 @@
 
 import gzip
 import tempfile
-from types import MethodType
 from pathlib import Path
 
 import pytest
@@ -281,7 +280,7 @@ def expected_sample_chunk_sizes():
 
 @pytest.fixture
 def v1_atom_diffusion_factory():
-    """Build a lightweight Boltz-1 diffusion stub that records sampled batch sizes."""
+    """Build a lightweight Boltz-1 diffusion module that records sampled batch sizes."""
     pytest.importorskip("torch")
 
     try:
@@ -290,10 +289,29 @@ def v1_atom_diffusion_factory():
         pytest.skip(f"Cannot import AtomDiffusion: {e}")
 
     def _make_v1_atom_diffusion(call_sizes: list[int]):
+        class RecordingV1ScoreModel(torch.nn.Module):
+            def __init__(self, token_s: int):
+                super().__init__()
+                self.coord_proj = torch.nn.Linear(3, 3, bias=False)
+                self.token_proj = torch.nn.Linear(1, 2 * token_s, bias=False)
+                torch.nn.init.zeros_(self.coord_proj.weight)
+                torch.nn.init.zeros_(self.token_proj.weight)
+
+            def forward(self, r_noisy, times, **network_condition_kwargs):
+                assert network_condition_kwargs["multiplicity"] == r_noisy.shape[0]
+                call_sizes.append(r_noisy.shape[0])
+                num_tokens = network_condition_kwargs["feats"]["token_index"].shape[1]
+                token_a = self.token_proj(times.to(r_noisy.dtype).unsqueeze(-1))
+                token_a = token_a.unsqueeze(1).expand(-1, num_tokens, -1)
+                return {
+                    "r_update": self.coord_proj(r_noisy),
+                    "token_a": token_a,
+                }
+
         diffusion = AtomDiffusion.__new__(AtomDiffusion)
         torch.nn.Module.__init__(diffusion)
-        diffusion.score_model = torch.nn.Linear(1, 1)
         diffusion.token_s = 2
+        diffusion.score_model = RecordingV1ScoreModel(diffusion.token_s)
         diffusion.sigma_min = 0.5
         diffusion.sigma_max = 1.0
         diffusion.sigma_data = 1.0
@@ -307,21 +325,6 @@ def v1_atom_diffusion_factory():
         diffusion.accumulate_token_repr = False
         diffusion.alignment_reverse_diff = False
         diffusion.eval()
-
-        def fake_forward(self, noised_atom_coords, sigma, training, network_condition_kwargs):
-            del sigma, training
-            call_sizes.append(noised_atom_coords.shape[0])
-            num_tokens = network_condition_kwargs["feats"]["token_index"].shape[1]
-            token_a = torch.zeros(
-                (noised_atom_coords.shape[0], num_tokens, 2 * self.token_s),
-                dtype=noised_atom_coords.dtype,
-                device=noised_atom_coords.device,
-            )
-            return torch.zeros_like(noised_atom_coords), token_a
-
-        diffusion.preconditioned_network_forward = MethodType(
-            fake_forward, diffusion
-        )
         return diffusion
 
     return _make_v1_atom_diffusion
@@ -329,7 +332,7 @@ def v1_atom_diffusion_factory():
 
 @pytest.fixture
 def v2_atom_diffusion_factory():
-    """Build a lightweight Boltz-2 diffusion stub that records sampled batch sizes."""
+    """Build a lightweight Boltz-2 diffusion module that records sampled batch sizes."""
     pytest.importorskip("torch")
 
     try:
@@ -338,9 +341,21 @@ def v2_atom_diffusion_factory():
         pytest.skip(f"Cannot import AtomDiffusion: {e}")
 
     def _make_v2_atom_diffusion(call_sizes: list[int]):
+        class RecordingV2ScoreModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.coord_proj = torch.nn.Linear(3, 3, bias=False)
+                torch.nn.init.zeros_(self.coord_proj.weight)
+
+            def forward(self, r_noisy, times, **network_condition_kwargs):
+                del times
+                assert network_condition_kwargs["multiplicity"] == r_noisy.shape[0]
+                call_sizes.append(r_noisy.shape[0])
+                return self.coord_proj(r_noisy)
+
         diffusion = AtomDiffusion.__new__(AtomDiffusion)
         torch.nn.Module.__init__(diffusion)
-        diffusion.score_model = torch.nn.Linear(1, 1)
+        diffusion.score_model = RecordingV2ScoreModel()
         diffusion.sigma_min = 0.5
         diffusion.sigma_max = 1.0
         diffusion.sigma_data = 1.0
@@ -353,15 +368,6 @@ def v2_atom_diffusion_factory():
         diffusion.step_scale_random = None
         diffusion.alignment_reverse_diff = False
         diffusion.eval()
-
-        def fake_forward(self, noised_atom_coords, sigma, network_condition_kwargs):
-            del sigma, network_condition_kwargs
-            call_sizes.append(noised_atom_coords.shape[0])
-            return torch.zeros_like(noised_atom_coords)
-
-        diffusion.preconditioned_network_forward = MethodType(
-            fake_forward, diffusion
-        )
         return diffusion
 
     return _make_v2_atom_diffusion
