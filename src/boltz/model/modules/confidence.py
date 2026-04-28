@@ -18,6 +18,17 @@ from boltz.model.modules.trunk import (
 from boltz.model.modules.utils import LinearNoBias
 
 
+def _concat_confidence_outputs(out_dicts):
+    """Concatenate sequential confidence outputs, preserving nested dicts."""
+    first = out_dicts[0]
+    if isinstance(first, dict):
+        return {
+            key: _concat_confidence_outputs([out[key] for out in out_dicts])
+            for key in first
+        }
+    return torch.cat(out_dicts, dim=0)
+
+
 class ConfidenceModule(nn.Module):
     """Confidence module."""
 
@@ -215,22 +226,7 @@ class ConfidenceModule(nn.Module):
                     )
                 )
 
-            out_dict = {}
-            for key in out_dicts[0]:
-                if key != "pair_chains_iptm":
-                    out_dict[key] = torch.cat([out[key] for out in out_dicts], dim=0)
-                else:
-                    pair_chains_iptm = {}
-                    for chain_idx1 in out_dicts[0][key].keys():
-                        chains_iptm = {}
-                        for chain_idx2 in out_dicts[0][key][chain_idx1].keys():
-                            chains_iptm[chain_idx2] = torch.cat(
-                                [out[key][chain_idx1][chain_idx2] for out in out_dicts],
-                                dim=0,
-                            )
-                        pair_chains_iptm[chain_idx1] = chains_iptm
-                    out_dict[key] = pair_chains_iptm
-            return out_dict
+            return _concat_confidence_outputs(out_dicts)
         if self.imitate_trunk:
             s_inputs = self.input_embedder(feats)
 
