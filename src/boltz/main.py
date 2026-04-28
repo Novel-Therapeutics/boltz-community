@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 import pickle
 import platform
+import re
 import tarfile
 import warnings
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
@@ -488,23 +489,34 @@ def filter_inputs_affinity(
         The manifest of the filtered input data.
 
     """
-    from boltz.data.types import Manifest
+    from boltz.data.types import Manifest, get_affinity_output_id
 
     click.echo("Checking input data for affinity.")
 
     pred_dir = outdir / "predictions"
 
-    # Get all affinity targets
-    existing = {
-        r.id
-        for r in manifest.records
-        if r.affinity
-        and (pred_dir / r.id / f"affinity_{r.id}.json").exists()
-    }
+    def affinity_output_path(record):
+        output_id = get_affinity_output_id(record)
+        return pred_dir / record.id / f"affinity_{output_id}.json"
+
+    existing = [
+        record
+        for record in manifest.records
+        if record.affinity and affinity_output_path(record).exists()
+    ]
 
     # Remove them from the input data
     if existing and not override:
-        manifest = Manifest([r for r in manifest.records if r.id not in existing])
+        existing_keys = {
+            (record.id, get_affinity_output_id(record)) for record in existing
+        }
+        manifest = Manifest(
+            [
+                record
+                for record in manifest.records
+                if (record.id, get_affinity_output_id(record)) not in existing_keys
+            ]
+        )
         num_skipped = len(existing)
         msg = (
             f"Found some existing affinity predictions ({num_skipped}), "
@@ -533,6 +545,85 @@ def filter_inputs_affinity(
         )
 
     return manifest
+
+
+def expand_affinity_records(manifest: Manifest) -> Manifest:
+    """Expand repeated-binder affinity requests into per-copy records."""
+    from boltz.data import const
+    from boltz.data.types import AffinityInfo, Manifest
+
+    expanded_records = []
+    for record in manifest.records:
+        affinity = record.affinity
+        if affinity is None:
+            expanded_records.append(record)
+            continue
+
+        if affinity.chain_name is not None:
+            binder_chain = next(
+                (
+                    chain
+                    for chain in record.chains
+                    if chain.chain_name == affinity.chain_name
+                ),
+                None,
+            )
+            if binder_chain is None:
+                msg = (
+                    f"Affinity target mismatch for record {record.id}: "
+                    f"could not find binder chain {affinity.chain_name!r} in "
+                    "the parsed structure."
+                )
+                raise click.ClickException(msg)
+        else:
+            binder_chain = next(
+                (
+                    chain
+                    for chain in record.chains
+                    if chain.chain_id == affinity.chain_id
+                ),
+                None,
+            )
+            if binder_chain is None:
+                msg = (
+                    f"Affinity target mismatch for record {record.id}: "
+                    f"could not find binder chain_id {affinity.chain_id} in "
+                    "the parsed structure."
+                )
+                raise click.ClickException(msg)
+
+        if binder_chain.entity_id is None:
+            msg = (
+                f"Affinity target mismatch for record {record.id}: "
+                f"binder {binder_chain.chain_name!r} is missing an entity_id."
+            )
+            raise click.ClickException(msg)
+
+        binder_copies = [
+            chain
+            for chain in record.chains
+            if chain.entity_id == binder_chain.entity_id
+            and chain.mol_type == const.chain_type_ids["NONPOLYMER"]
+        ]
+        if len(binder_copies) <= 1:
+            expanded_records.append(record)
+            continue
+
+        for chain in binder_copies:
+            sanitized_chain_name = re.sub(r"[^\w.-]", "_", chain.chain_name)
+            expanded_records.append(
+                replace(
+                    record,
+                    affinity=AffinityInfo(
+                        chain_id=chain.chain_id,
+                        mw=affinity.mw,
+                        chain_name=chain.chain_name,
+                        output_id=f"{record.id}_{sanitized_chain_name}",
+                    ),
+                )
+            )
+
+    return Manifest(expanded_records)
 
 
 def compute_msa(
@@ -1621,9 +1712,11 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         # Print header
         click.echo("\nPredicting property: affinity\n")
 
+        manifest_affinity = expand_affinity_records(manifest)
+
         # Validate inputs
         manifest_filtered = filter_inputs_affinity(
-            manifest=manifest,
+            manifest=manifest_affinity,
             outdir=out_dir,
             override=override,
         )
@@ -1631,7 +1724,10 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             click.echo("Found existing affinity predictions for all inputs, skipping.")
             return
 
-        msg = f"Running affinity prediction for {len(manifest_filtered.records)} input"
+        msg = (
+            f"Running affinity prediction for "
+            f"{len(manifest_filtered.records)} affinity target"
+        )
         msg += "s." if len(manifest_filtered.records) > 1 else "."
         click.echo(msg)
 

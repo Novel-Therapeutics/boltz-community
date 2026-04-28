@@ -588,10 +588,16 @@ class TemplateInfo:
 
 @dataclass(frozen=True)
 class AffinityInfo:
-    """AffinityInfo datatype."""
+    """Affinity metadata for one binder copy.
+
+    chain_name identifies the binder chain when present, and output_id controls
+    the per-copy affinity output filename for expanded repeated-binder runs.
+    """
 
     chain_id: int
     mw: float
+    chain_name: Optional[str] = None
+    output_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -606,6 +612,13 @@ class Record(JSONSerializable):
     templates: Optional[list[TemplateInfo]] = None
     md: Optional[MDInfo] = None
     affinity: Optional[AffinityInfo] = None
+
+
+def get_affinity_output_id(record: Record) -> str:
+    """Return the affinity output suffix for a record."""
+    if record.affinity is None or record.affinity.output_id is None:
+        return record.id
+    return record.affinity.output_id
 
 
 ####################################################################################################

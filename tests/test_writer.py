@@ -6,6 +6,7 @@ import torch
 
 from boltz.data import const
 from boltz.data.types import (
+    AffinityInfo,
     AtomV2,
     BondV2,
     Chain,
@@ -18,7 +19,11 @@ from boltz.data.types import (
     StructureInfo,
     StructureV2,
 )
-from boltz.data.write.writer import BoltzWriter, _select_prediction_value
+from boltz.data.write.writer import (
+    BoltzAffinityWriter,
+    BoltzWriter,
+    _select_prediction_value,
+)
 
 
 def _make_minimal_structure_v2() -> StructureV2:
@@ -68,7 +73,7 @@ def _make_minimal_structure_v2() -> StructureV2:
     )
 
 
-def _make_record(record_id: str) -> Record:
+def _make_record(record_id: str, affinity: AffinityInfo | None = None) -> Record:
     return Record(
         id=record_id,
         structure=StructureInfo(),
@@ -83,6 +88,7 @@ def _make_record(record_id: str) -> Record:
             )
         ],
         interfaces=[],
+        affinity=affinity,
     )
 
 
@@ -255,3 +261,48 @@ def test_boltz_writer_preserves_single_record_embedding_shape(tmp_path: Path):
     embeddings = np.load(out_dir / "record_a" / "embeddings_record_a.npz")
     assert embeddings["s"].shape == (1, 2, 3)
     assert embeddings["z"].shape == (1, 1, 2, 2)
+
+
+def test_affinity_writer_uses_per_copy_output_name(tmp_path: Path):
+    writer = BoltzAffinityWriter(
+        data_dir=str(tmp_path / "data"),
+        output_dir=str(tmp_path / "out"),
+    )
+
+    batch = {
+        "record": [
+            _make_record(
+                "record_a",
+                affinity=AffinityInfo(
+                    chain_id=0,
+                    mw=123.4,
+                    chain_name="L2",
+                    output_id="record_a_L2",
+                ),
+            )
+        ],
+    }
+    prediction = {
+        "exception": False,
+        "affinity_pred_value": torch.tensor(1.25),
+        "affinity_probability_binary": torch.tensor(0.75),
+    }
+
+    writer.write_on_batch_end(
+        trainer=None,
+        pl_module=None,
+        prediction=prediction,
+        batch_indices=[],
+        batch=batch,
+        batch_idx=0,
+        dataloader_idx=0,
+    )
+
+    import json
+
+    path = tmp_path / "out" / "record_a" / "affinity_record_a_L2.json"
+    with path.open() as f:
+        affinity = json.load(f)
+
+    assert affinity["binder_chain"] == "L2"
+    assert affinity["affinity_pred_value"] == pytest.approx(1.25)

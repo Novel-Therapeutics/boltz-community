@@ -36,6 +36,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed template alignment forcing gapless matches, breaking templates with indels ([#538](https://github.com/jwohlwend/boltz/pull/538))
 - Fixed relative MSA paths resolved from CWD instead of input file directory ([#500](https://github.com/jwohlwend/boltz/pull/500))
 - Fixed affinity prediction crashing when structure prediction fails (e.g. covalent ligands, OOM) — now skips affected records with a warning ([#620](https://github.com/jwohlwend/boltz/issues/620), [#624](https://github.com/jwohlwend/boltz/issues/624))
+- Fixed affinity prediction for repeated ligand binders: inputs that request affinity for one copy of a repeated ligand entity no longer fail, and affinity is now reported per binder copy as `affinity_<record>_<chain>.json` ([#647](https://github.com/jwohlwend/boltz/issues/647))
 - Fixed Boltz-2 checkpoint loading crash due to extra `mse_rotational_alignment` kwarg ([#644](https://github.com/jwohlwend/boltz/issues/644))
 - Fixed empty checkpoint files causing cryptic `load_from_checkpoint` aborts — now re-downloads empty cached weights and raises a clear error before model load ([#664](https://github.com/jwohlwend/boltz/issues/664))
 - Fixed CPU inference producing distorted structures with wrong bond lengths — Boltz-2 was incorrectly using `bf16-mixed` precision on CPU; now forces float32 ([#653](https://github.com/jwohlwend/boltz/issues/653))

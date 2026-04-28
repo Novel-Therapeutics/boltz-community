@@ -9,7 +9,14 @@ from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import BasePredictionWriter
 from torch import Tensor
 
-from boltz.data.types import Coords, Interface, Record, Structure, StructureV2
+from boltz.data.types import (
+    Coords,
+    Interface,
+    Record,
+    Structure,
+    StructureV2,
+    get_affinity_output_id,
+)
 from boltz.data.write.mmcif import to_mmcif
 from boltz.data.write.pdb import to_pdb
 
@@ -397,6 +404,7 @@ class BoltzAffinityWriter(BasePredictionWriter):
         if prediction["exception"]:
             self.failed += 1
             return
+        record = batch["record"][0]
         # Dump affinity summary
         affinity_summary = {}
         pred_affinity_value = prediction["affinity_pred_value"]
@@ -405,6 +413,8 @@ class BoltzAffinityWriter(BasePredictionWriter):
             "affinity_pred_value": pred_affinity_value.item(),
             "affinity_probability_binary": pred_affinity_probability.item(),
         }
+        if record.affinity and record.affinity.chain_name:
+            affinity_summary["binder_chain"] = record.affinity.chain_name
         if "affinity_pred_value1" in prediction:
             pred_affinity_value1 = prediction["affinity_pred_value1"]
             pred_affinity_probability1 = prediction["affinity_probability_binary1"]
@@ -420,9 +430,10 @@ class BoltzAffinityWriter(BasePredictionWriter):
             )
 
         # Save the affinity summary
-        struct_dir = self.output_dir / batch["record"][0].id
+        struct_dir = self.output_dir / record.id
         struct_dir.mkdir(exist_ok=True)
-        path = struct_dir / f"affinity_{batch['record'][0].id}.json"
+        output_id = get_affinity_output_id(record)
+        path = struct_dir / f"affinity_{output_id}.json"
 
         with path.open("w") as f:
             f.write(json.dumps(affinity_summary, indent=4))

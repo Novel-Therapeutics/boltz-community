@@ -346,3 +346,62 @@ END
 
         assert len(target.record.templates or []) == 1
         assert list(target.templates or {}) == ["template"]
+
+
+class TestAffinityParsing:
+    """Repeated ligand copies should remain valid affinity inputs."""
+
+    @pytest.fixture(autouse=True)
+    def _check_deps(self):
+        """Skip if parser deps are missing."""
+        try:
+            from boltz.data.parse.schema import parse_boltz_schema  # noqa: F401
+        except ImportError as e:
+            pytest.skip(f"Cannot import schema: {e}")
+
+    def test_repeated_binder_keeps_requested_chain(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A repeated ligand binder should preserve the requested chain name."""
+        from boltz.data.parse.schema import parse_boltz_schema
+
+        ligand = Chem.AddHs(Chem.MolFromSmiles("CCO"))
+        AllChem.EmbedMolecule(ligand, randomSeed=42)
+        for idx, atom in enumerate(ligand.GetAtoms()):
+            atom.SetProp("name", f"C{idx + 1}")
+            atom.SetProp("leaving_atom", "0")
+
+        ccd = {"TST": ligand}
+
+        def _mock_get_mol(res_name, mols, moldir):
+            if res_name in mols:
+                return mols[res_name]
+            return _mock_residue_mol(res_name, mols, moldir)
+
+        monkeypatch.setattr("boltz.data.parse.schema.get_mol", _mock_get_mol)
+
+        schema = {
+            "version": 1,
+            "sequences": [
+                {"protein": {"id": "A", "sequence": "AA", "msa": "empty"}},
+                {"ligand": {"id": ["L1", "L2"], "ccd": "TST"}},
+            ],
+            "properties": [
+                {"affinity": {"binder": "L1"}},
+            ],
+        }
+
+        target = parse_boltz_schema(
+            Path("test.yaml"),
+            schema,
+            ccd=ccd,
+            mol_dir=tmp_path,
+            boltz_2=True,
+        )
+
+        assert target.record.affinity is not None
+        assert target.record.affinity.chain_name == "L1"
+        ligand_chains = [
+            chain for chain in target.record.chains if chain.entity_id == 1
+        ]
+        assert [chain.chain_name for chain in ligand_chains] == ["L1", "L2"]

@@ -9,7 +9,7 @@ from Bio import Align
 from chembl_structure_pipeline.exclude_flag import exclude_flag
 from chembl_structure_pipeline.standardizer import standardize_mol
 from rdkit import Chem, rdBase
-from rdkit.Chem import AllChem, HybridizationType
+from rdkit.Chem import AllChem, Descriptors, HybridizationType
 from rdkit.Chem.MolStandardize import rdMolStandardize
 from rdkit.Chem.rdchem import BondStereo, Conformer, Mol
 from rdkit.Chem.rdDistGeom import GetMoleculeBoundsMatrix
@@ -158,7 +158,6 @@ class ParsedChain:
     residues: list[ParsedResidue]
     cyclic_period: int
     sequence: Optional[str] = None
-    affinity: Optional[bool] = False
     affinity_mw: Optional[float] = None
 
 
@@ -1106,14 +1105,9 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
             elif isinstance(item[entity_type]["id"], list):
                 ids.extend(item[entity_type]["id"])
 
-        # Check if any affinity ligand is present
-        if len(ids) == 1:
-            affinity = ids[0] in affinity_ligands
-        elif (len(ids) > 1) and any(x in affinity_ligands for x in ids):
-            msg = "Cannot compute affinity for a ligand that has multiple copies!"
-            raise ValueError(msg)
-        else:
-            affinity = False
+        # Check if any affinity ligand is present for this grouped entity.
+        # Multiple copies are expanded later during the affinity prediction pass.
+        affinity = any(x in affinity_ligands for x in ids)
 
         # Ensure all the items share the same msa
         msa = -1
@@ -1213,7 +1207,7 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 ref_mol = get_mol(code, ccd, mol_dir)
 
                 if affinity:
-                    affinity_mw = AllChem.Descriptors.MolWt(ref_mol)
+                    affinity_mw = Descriptors.MolWt(ref_mol)
 
                     # Add error and warning messaging when computing affinity with ligands too large
                     if ref_mol.GetNumAtoms() > 128:
@@ -1240,7 +1234,6 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 type=const.chain_type_ids["NONPOLYMER"],
                 cyclic_period=0,
                 sequence=None,
-                affinity=affinity,
                 affinity_mw=affinity_mw,
             )
 
@@ -1301,7 +1294,7 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                     print("WARNING: the ligand used for affinity calculation is larger than 56 heavy-atoms, "
                           "which was the maximum during training, therefore the affinity output might be inaccurate.")
 
-            affinity_mw = AllChem.Descriptors.MolWt(mol_no_h) if affinity else None
+            affinity_mw = Descriptors.MolWt(mol_no_h) if affinity else None
             extra_mols[f"LIG{ligand_id}"] = mol_no_h
             residue = parse_ccd_residue(
                 name=f"LIG{ligand_id}",
@@ -1316,7 +1309,6 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 type=const.chain_type_ids["NONPOLYMER"],
                 cyclic_period=0,
                 sequence=None,
-                affinity=affinity,
                 affinity_mw=affinity_mw,
             )
 
@@ -1382,14 +1374,11 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
             protein_chains.add(chain_name)
 
         # Add affinity info
-        if chain.affinity and affinity_info is not None:
-            msg = "Cannot compute affinity for multiple ligands!"
-            raise ValueError(msg)
-
-        if chain.affinity:
+        if chain_name in affinity_ligands:
             affinity_info = AffinityInfo(
                 chain_id=asym_id,
                 mw=chain.affinity_mw,
+                chain_name=chain_name,
             )
 
         # Find all copies of this chain in the assembly
