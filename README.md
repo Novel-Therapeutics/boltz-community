@@ -13,7 +13,16 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Compatible with PyTorch 2.6+ and Lightning 2.6+
 
 **Bug fixes:**
-- Cherry-picked community PRs: [#654](https://github.com/jwohlwend/boltz/pull/654), [#602](https://github.com/jwohlwend/boltz/pull/602), [#584](https://github.com/jwohlwend/boltz/pull/584), [#582](https://github.com/jwohlwend/boltz/pull/582), [#576](https://github.com/jwohlwend/boltz/pull/576), [#538](https://github.com/jwohlwend/boltz/pull/538), [#500](https://github.com/jwohlwend/boltz/pull/500), [#488](https://github.com/jwohlwend/boltz/pull/488), [#463](https://github.com/jwohlwend/boltz/pull/463), [#363](https://github.com/jwohlwend/boltz/pull/363)
+- Fixed ROCm DDP crashes by allocating tensors directly on the target device instead of CPU-then-move ([#654](https://github.com/jwohlwend/boltz/pull/654))
+- Fixed `--write_full_pae` and `--write_full_pde` being ignored, and added matching `--no_write_full_pae` and `--no_write_full_pde` flags ([#602](https://github.com/jwohlwend/boltz/pull/602))
+- Fixed MSA CSV parsing removing paired duplicate sequences across different taxa ([#584](https://github.com/jwohlwend/boltz/pull/584))
+- Fixed MSA feature construction incorrectly including paired sequences as unpaired ([#582](https://github.com/jwohlwend/boltz/pull/582))
+- Fixed consecutive CA filter rejecting valid protein chains containing metal ions ([#576](https://github.com/jwohlwend/boltz/pull/576))
+- Fixed template alignment forcing gapless matches, breaking templates with indels ([#538](https://github.com/jwohlwend/boltz/pull/538))
+- Fixed relative MSA paths resolved from CWD instead of input file directory ([#500](https://github.com/jwohlwend/boltz/pull/500))
+- Fixed MSA authentication headers forcing `Content-Type`, which breaks some MSA servers ([#488](https://github.com/jwohlwend/boltz/pull/488))
+- Fixed CLI help/default mismatches and added option validation for MSA pairing strategy ([#463](https://github.com/jwohlwend/boltz/pull/463))
+- Fixed sign error in binding energy calculation documentation ([#363](https://github.com/jwohlwend/boltz/pull/363))
 - Fixed broken v1 attention code path in `PairformerLayer` ([#602](https://github.com/jwohlwend/boltz/pull/602))
 - Fixed SIGSEGV crash on ligands with invalid implicit valence ([#649](https://github.com/jwohlwend/boltz/issues/649))
 - Fixed `--subsample_msa` defaulting to False instead of True ([#628](https://github.com/jwohlwend/boltz/issues/628))
@@ -32,9 +41,6 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed potential stack overflow in training/validation data loading via bounded retry (max 10 attempts)
 - Fixed `boltz predict` exiting silently with code 0 when all inputs fail validation (e.g. requesting affinity for a protein chain)
 - Fixed MSA pairing keys lost when loading cached A3M files ([#627](https://github.com/jwohlwend/boltz/issues/627))
-- Fixed consecutive CA filter rejecting valid protein chains containing metal ions ([#576](https://github.com/jwohlwend/boltz/pull/576))
-- Fixed template alignment forcing gapless matches, breaking templates with indels ([#538](https://github.com/jwohlwend/boltz/pull/538))
-- Fixed relative MSA paths resolved from CWD instead of input file directory ([#500](https://github.com/jwohlwend/boltz/pull/500))
 - Fixed affinity prediction crashing when structure prediction fails (e.g. covalent ligands, OOM) — now skips affected records with a warning ([#620](https://github.com/jwohlwend/boltz/issues/620), [#624](https://github.com/jwohlwend/boltz/issues/624))
 - Fixed affinity prediction for repeated ligand binders: inputs that request affinity for one copy of a repeated ligand entity no longer fail, and affinity is now reported per binder copy as `affinity_<record>_<chain>.json` ([#647](https://github.com/jwohlwend/boltz/issues/647))
 - Fixed Boltz-2 checkpoint loading crash due to extra `mse_rotational_alignment` kwarg ([#644](https://github.com/jwohlwend/boltz/issues/644))
@@ -44,6 +50,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed diffusion sampling ignoring `--max_parallel_samples` in divisible cases (for example `10` samples with a parallel limit of `5`), which could batch everything into one large chunk and trigger avoidable OOMs
 - Fixed MSA discarded as "does not match input sequence" when pre-computed MSAs are aligned to a full UniProt sequence but the input uses a shorter PDB construct — Boltz now finds the construct as a contiguous subsequence within the MSA query and trims all MSA rows accordingly, instead of falling back to a dummy single-sequence MSA. Tolerates up to 5% mismatches (selenomethionine substitutions, expression tags, minor construct mutations). Applies to both Boltz-1 and Boltz-2.
 - Fixed PDB templates crashing with `IndexError: list index out of range` when Gemmi drops entity sequence metadata during PDB→mmCIF conversion — template parsing now falls back to the observed polymer residues, and relative template `pdb`/`cif` paths are resolved from the YAML file directory instead of the current working directory ([#669](https://github.com/jwohlwend/boltz/issues/669))
+- Fixed custom cross-residue covalent bond constraints missing atom-level bond-length bounds and being dropped from mmCIF output ([#675](https://github.com/jwohlwend/boltz/issues/675))
 
 **Improvements:**
 - Added `--skip_bad_inputs` flag: by default `boltz predict` now aborts when any input fails processing; pass `--skip_bad_inputs` to skip bad inputs and continue with the rest
