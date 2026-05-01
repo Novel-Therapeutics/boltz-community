@@ -1,5 +1,6 @@
 """Tests for boltz.data.parse.schema — atom naming, chirality, and leaving atoms."""
 
+import logging
 import re
 import textwrap
 from pathlib import Path
@@ -54,6 +55,39 @@ def _mock_residue_mol(res_name, _mols, _moldir):
         conformer.SetAtomPosition(idx, (x, y, z))
     mol.AddConformer(conformer)
     return mol
+
+
+def _make_named_mol(atom_specs, bonds):
+    """Build a small CCD-like molecule with named heavy atoms."""
+    mol = Chem.RWMol()
+    for atom_name, atomic_num in atom_specs:
+        idx = mol.AddAtom(Chem.Atom(atomic_num))
+        atom = mol.GetAtomWithIdx(idx)
+        atom.SetProp("name", atom_name)
+        atom.SetProp("leaving_atom", "0")
+    for idx_1, idx_2, bond_type in bonds:
+        mol.AddBond(idx_1, idx_2, bond_type)
+
+    mol = mol.GetMol()
+    conformer = Chem.Conformer(mol.GetNumAtoms())
+    for idx in range(mol.GetNumAtoms()):
+        conformer.SetAtomPosition(idx, (float(idx), 0.0, 0.0))
+    mol.AddConformer(conformer)
+    return mol
+
+
+def _build_atom_id_map(structure):
+    """Map (residue index, atom name) to atom table index."""
+    return {
+        (int(res["res_idx"]), str(atom["name"])): atom_idx
+        for res in structure.residues
+        for atom_idx, atom in enumerate(
+            structure.atoms[
+                int(res["atom_idx"]) : int(res["atom_idx"] + res["atom_num"])
+            ],
+            start=int(res["atom_idx"]),
+        )
+    }
 
 
 class TestAtomNaming:
@@ -159,7 +193,9 @@ class TestChiralConstraints:
     def _check_deps(self):
         """Skip if schema deps are missing."""
         try:
-            from boltz.data.parse.schema import compute_chiral_atom_constraints  # noqa: F401
+            from boltz.data.parse.schema import (
+                compute_chiral_atom_constraints,  # noqa: F401
+            )
         except ImportError as e:
             pytest.skip(f"Cannot import schema: {e}")
 
@@ -285,6 +321,192 @@ class TestLeavingAtoms:
         assert len(calls) == 2
         for call in calls:
             assert call.get("drop_leaving_atoms", False) is True
+
+
+class TestExplicitBondConstraints:
+    """User-provided bonds should survive as graph and geometry constraints."""
+
+    @pytest.fixture(autouse=True)
+    def _check_deps(self):
+        """Skip if parser deps are missing."""
+        try:
+            from boltz.data.parse.schema import parse_boltz_schema  # noqa: F401
+        except ImportError as e:
+            pytest.skip(f"Cannot import parse_boltz_schema: {e}")
+
+    def test_modified_residue_bond_adds_geometry_bound(self, tmp_path):
+        """Cross-residue bond constraints should get a bond-length bound."""
+        from boltz.data import const
+        from boltz.data.parse.schema import (
+            _estimate_covalent_bond_length_with_fallback,
+            parse_boltz_schema,
+        )
+
+        ace = _make_named_mol(
+            [("C", 6), ("O", 8), ("CH3", 6)],
+            [(0, 1, Chem.BondType.DOUBLE), (0, 2, Chem.BondType.SINGLE)],
+        )
+        cy3 = _make_named_mol(
+            [("N", 7), ("CA", 6), ("C", 6), ("O", 8), ("CB", 6), ("SG", 16)],
+            [
+                (0, 1, Chem.BondType.SINGLE),
+                (1, 2, Chem.BondType.SINGLE),
+                (1, 4, Chem.BondType.SINGLE),
+                (2, 3, Chem.BondType.DOUBLE),
+                (4, 5, Chem.BondType.SINGLE),
+            ],
+        )
+        schema = {
+            "version": 1,
+            "sequences": [
+                {
+                    "protein": {
+                        "id": "B",
+                        "sequence": "GC",
+                        "modifications": [
+                            {"position": 1, "ccd": "ACE"},
+                            {"position": 2, "ccd": "CY3"},
+                        ],
+                    }
+                },
+            ],
+            "constraints": [
+                {
+                    "bond": {
+                        "atom1": ["B", 1, "CH3"],
+                        "atom2": ["B", 2, "SG"],
+                    }
+                }
+            ],
+        }
+
+        target = parse_boltz_schema(
+            Path("issue675.yaml"),
+            schema,
+            ccd={"ACE": ace, "CY3": cy3},
+            mol_dir=tmp_path,
+            boltz_2=True,
+        )
+        structure = target.structure
+        atom_ids = _build_atom_id_map(structure)
+        ch3 = atom_ids[(0, "CH3")]
+        sg = atom_ids[(1, "SG")]
+
+        matching_bonds = [
+            bond
+            for bond in structure.bonds
+            if {int(bond["atom_1"]), int(bond["atom_2"])} == {ch3, sg}
+        ]
+        assert len(matching_bonds) == 1
+        assert int(matching_bonds[0]["type"]) == const.bond_type_ids["COVALENT"]
+
+        bounds = target.residue_constraints.rdkit_bounds_constraints
+        matching_bounds = [
+            bound
+            for bound in bounds
+            if set(map(int, bound["atom_idxs"])) == {ch3, sg}
+        ]
+        assert len(matching_bounds) == 1
+        assert bool(matching_bounds[0]["is_bond"])
+        assert not bool(matching_bounds[0]["is_angle"])
+        expected, used_fallback = _estimate_covalent_bond_length_with_fallback(
+            6, 16
+        )
+        assert not used_fallback
+        assert matching_bounds[0]["lower_bound"] == pytest.approx(
+            expected - 0.05,
+            abs=1e-3,
+        )
+        assert matching_bounds[0]["upper_bound"] == pytest.approx(
+            expected + 0.05,
+            abs=1e-3,
+        )
+
+    def test_unknown_bond_atom_raises_valueerror(self, tmp_path):
+        """Bond constraints should report typos as ValueError."""
+        from boltz.data.parse.schema import parse_boltz_schema
+
+        ace = _make_named_mol(
+            [("C", 6), ("O", 8), ("CH3", 6)],
+            [(0, 1, Chem.BondType.DOUBLE), (0, 2, Chem.BondType.SINGLE)],
+        )
+        schema = {
+            "version": 1,
+            "sequences": [
+                {
+                    "protein": {
+                        "id": "B",
+                        "sequence": "G",
+                        "modifications": [{"position": 1, "ccd": "ACE"}],
+                    }
+                },
+            ],
+            "constraints": [
+                {"bond": {"atom1": ["B", 1, "CH3"], "atom2": ["B", 1, "NOPE"]}}
+            ],
+        }
+
+        with pytest.raises(ValueError, match="unknown atom"):
+            parse_boltz_schema(
+                Path("bad_bond.yaml"),
+                schema,
+                ccd={"ACE": ace},
+                mol_dir=tmp_path,
+                boltz_2=True,
+            )
+
+    def test_unknown_element_bond_uses_fallback_bound(self, tmp_path, caplog):
+        """Unknown covalent radii should fall back to a generic bond length."""
+        from boltz.data.parse.schema import parse_boltz_schema
+
+        caplog.set_level(logging.WARNING, logger="boltz.data.parse.schema")
+        dummy = _make_named_mol([("DU", 0)], [])
+        carbon = _make_named_mol([("C1", 6)], [])
+        schema = {
+            "version": 1,
+            "sequences": [
+                {
+                    "protein": {
+                        "id": "B",
+                        "sequence": "GC",
+                        "modifications": [
+                            {"position": 1, "ccd": "DUM"},
+                            {"position": 2, "ccd": "CAR"},
+                        ],
+                    }
+                },
+            ],
+            "constraints": [
+                {"bond": {"atom1": ["B", 1, "DU"], "atom2": ["B", 2, "C1"]}}
+            ],
+        }
+
+        target = parse_boltz_schema(
+            Path("unknown_element.yaml"),
+            schema,
+            ccd={"DUM": dummy, "CAR": carbon},
+            mol_dir=tmp_path,
+            boltz_2=True,
+        )
+
+        structure = target.structure
+        atom_ids = _build_atom_id_map(structure)
+        du = atom_ids[(0, "DU")]
+        c1 = atom_ids[(1, "C1")]
+        bounds = target.residue_constraints.rdkit_bounds_constraints
+        fallback_bounds = [
+            bound
+            for bound in bounds
+            if set(map(int, bound["atom_idxs"])) == {du, c1}
+        ]
+        assert len(fallback_bounds) == 1
+        assert fallback_bounds[0]["lower_bound"] == pytest.approx(1.5, abs=1e-3)
+        assert fallback_bounds[0]["upper_bound"] == pytest.approx(2.5, abs=1e-3)
+        assert any(
+            "Using fallback covalent bond length for explicit bond DU-C1"
+            in record.message
+            for record in caplog.records
+        )
 
 
 class TestTemplatePaths:

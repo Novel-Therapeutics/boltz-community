@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,7 +21,6 @@ from boltz.data import const
 from boltz.data.mol import load_molecules
 from boltz.data.parse.mmcif import parse_mmcif
 from boltz.data.parse.pdb import parse_pdb
-
 from boltz.data.types import (
     AffinityInfo,
     Atom,
@@ -49,6 +49,8 @@ from boltz.data.types import (
     Target,
     TemplateInfo,
 )
+
+logger = logging.getLogger(__name__)
 
 ####################################################################################################
 # DATACLASSES
@@ -336,6 +338,96 @@ def compute_geometry_constraints(mol: Mol, idx_map):
             )
             constraints.append(constraint)
     return constraints
+
+
+def _estimate_covalent_bond_length_with_fallback(
+    element_1: int, element_2: int
+) -> tuple[float, bool]:
+    """Estimate a generic covalent bond length from atomic covalent radii."""
+    periodic_table = Chem.GetPeriodicTable()
+    try:
+        atomic_num_1 = int(element_1)
+        atomic_num_2 = int(element_2)
+        radius_1 = periodic_table.GetRcovalent(atomic_num_1)
+        radius_2 = periodic_table.GetRcovalent(atomic_num_2)
+    except (RuntimeError, TypeError, ValueError, OverflowError):
+        return 2.0, True
+    if radius_1 <= 0 or radius_2 <= 0:
+        return 2.0, True
+    return float(radius_1 + radius_2), False
+
+
+def _element_label(element: int) -> str:
+    """Return a user-facing element label for explicit-bond diagnostics."""
+    periodic_table = Chem.GetPeriodicTable()
+    try:
+        atomic_num = int(element)
+        if atomic_num <= 0:
+            return f"unknown ({atomic_num})"
+        return f"{periodic_table.GetElementSymbol(atomic_num)} ({atomic_num})"
+    except (RuntimeError, TypeError, ValueError, OverflowError):
+        return f"unknown ({element!r})"
+
+
+def _add_explicit_bond_bound_constraint(
+    constraints: list[tuple],
+    explicit_bond_pairs: set[tuple[int, int]],
+    atom_1: int,
+    atom_2: int,
+    atom_name_1: str,
+    atom_name_2: str,
+    element_1: int,
+    element_2: int,
+) -> None:
+    """Ensure a user-provided bond is represented as a bond-length bound.
+
+    Duplicate user bond constraints can reference the same atom pair. The caller
+    tracks only user-added pairs, so lookup is independent of the size of the
+    pre-existing RDKit bounds list.
+    """
+    atom_pair = tuple(sorted((int(atom_1), int(atom_2))))
+    if atom_pair in explicit_bond_pairs:
+        return
+    explicit_bond_pairs.add(atom_pair)
+
+    length, used_fallback = _estimate_covalent_bond_length_with_fallback(
+        element_1, element_2
+    )
+    if used_fallback:
+        logger.warning(
+            "Using fallback covalent bond length for explicit bond %s-%s "
+            "because a covalent radius is unavailable for elements %s/%s.",
+            atom_name_1,
+            atom_name_2,
+            _element_label(element_1),
+            _element_label(element_2),
+        )
+    tolerance = 0.5 if used_fallback else 0.05
+    constraints.append(
+        (atom_pair, True, False, length + tolerance, length - tolerance)
+    )
+
+
+def _resolve_bond_constraint_atom(atom_spec, atom_idx_map):
+    """Resolve one YAML bond atom spec to parsed chain/residue/atom indices."""
+    try:
+        chain_name, res_idx, atom_name = tuple(atom_spec)
+    except (TypeError, ValueError):
+        msg = f"Bond constraint atom was not properly specified: {atom_spec!r}"
+        raise ValueError(msg) from None
+
+    try:
+        residue_idx = int(res_idx) - 1
+    except (TypeError, ValueError):
+        msg = f"Bond constraint residue index is not an integer: {atom_spec!r}"
+        raise ValueError(msg) from None
+
+    key = (chain_name, residue_idx, atom_name)
+    try:
+        return atom_idx_map[key]
+    except KeyError:
+        msg = f"Bond constraint references unknown atom: {atom_spec!r}"
+        raise ValueError(msg) from None
 
 
 def compute_chiral_atom_constraints(mol, idx_map):
@@ -1211,8 +1303,11 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
 
                     # Add error and warning messaging when computing affinity with ligands too large
                     if ref_mol.GetNumAtoms() > 128:
-                        msg = f"The ligand for affinity is too large, ligands with more than 128 atoms are not " \
-                              f"supported in the affinity prediction module"
+                        msg = (
+                            "The ligand for affinity is too large, ligands with "
+                            "more than 128 atoms are not supported in the "
+                            "affinity prediction module"
+                        )
                         raise ValueError(msg)
                     elif ref_mol.GetNumAtoms() > 56:
                         print("WARNING: the ligand used for affinity calculation is larger than 56 heavy-atoms, which "
@@ -1288,7 +1383,11 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
             if affinity:
                 # Add error and warning messaging when computing affinity with ligands too large
                 if mol_no_h.GetNumAtoms() > 128:
-                    msg = f"The ligand for affinity is too large, ligands with more than 128 atoms are not supported in the affinity prediction module"
+                    msg = (
+                        "The ligand for affinity is too large, ligands with "
+                        "more than 128 atoms are not supported in the affinity "
+                        "prediction module"
+                    )
                     raise ValueError(msg)
                 elif mol_no_h.GetNumAtoms() > 56:
                     print("WARNING: the ligand used for affinity calculation is larger than 56 heavy-atoms, "
@@ -1531,33 +1630,46 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
     connections = []
     pocket_constraints = []
     contact_constraints = []
+    explicit_bond_pairs = set()
     constraints = schema.get("constraints", [])
     for constraint in constraints:
         if "bond" in constraint:
             if "atom1" not in constraint["bond"] or "atom2" not in constraint["bond"]:
-                msg = f"Bond constraint was not properly specified"
+                msg = "Bond constraint was not properly specified"
                 raise ValueError(msg)
 
-            c1, r1, a1 = tuple(constraint["bond"]["atom1"])
-            c2, r2, a2 = tuple(constraint["bond"]["atom2"])
-            c1, r1, a1 = atom_idx_map[(c1, r1 - 1, a1)]  # 1-indexed
-            c2, r2, a2 = atom_idx_map[(c2, r2 - 1, a2)]  # 1-indexed
+            c1, r1, a1 = _resolve_bond_constraint_atom(
+                constraint["bond"]["atom1"], atom_idx_map
+            )
+            c2, r2, a2 = _resolve_bond_constraint_atom(
+                constraint["bond"]["atom2"], atom_idx_map
+            )
             connections.append((c1, c2, r1, r2, a1, a2))
+            _add_explicit_bond_bound_constraint(
+                rdkit_bounds_constraint_data,
+                explicit_bond_pairs,
+                a1,
+                a2,
+                atom_data[a1][0],
+                atom_data[a2][0],
+                atom_data[a1][1],
+                atom_data[a2][1],
+            )
         elif "pocket" in constraint:
             if (
                 "binder" not in constraint["pocket"]
                 or "contacts" not in constraint["pocket"]
             ):
-                msg = f"Pocket constraint was not properly specified"
+                msg = "Pocket constraint was not properly specified"
                 raise ValueError(msg)
 
             if len(pocket_constraints) > 0 and not boltz_2:
-                msg = f"Only one pocket binders is supported in Boltz-1!"
+                msg = "Only one pocket binders is supported in Boltz-1!"
                 raise ValueError(msg)
 
             max_distance = constraint["pocket"].get("max_distance", 6.0)
             if max_distance != 6.0 and not boltz_2:
-                msg = f"Max distance != 6.0 is not supported in Boltz-1!"
+                msg = "Max distance != 6.0 is not supported in Boltz-1!"
                 raise ValueError(msg)
 
             binder = constraint["pocket"]["binder"]
@@ -1583,11 +1695,11 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 "token1" not in constraint["contact"]
                 or "token2" not in constraint["contact"]
             ):
-                msg = f"Contact constraint was not properly specified"
+                msg = "Contact constraint was not properly specified"
                 raise ValueError(msg)
 
             if not boltz_2:
-                msg = f"Contact constraint is not supported in Boltz-1!"
+                msg = "Contact constraint is not supported in Boltz-1!"
                 raise ValueError(msg)
 
             max_distance = constraint["contact"].get("max_distance", 6.0)
