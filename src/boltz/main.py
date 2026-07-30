@@ -1648,12 +1648,12 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         precision=precision,
     )
 
-    if accelerator == "cpu":
-        map_location = "cpu"
-    elif accelerator == "mps":
-        map_location = "mps"
-    else:
-        map_location = "cuda"
+    # Lightning constructs the model on CPU before loading its state dict. If
+    # checkpoint tensors are deserialized directly onto the accelerator,
+    # load_state_dict copies every tensor back to CPU individually and then
+    # Trainer moves the completed model to the accelerator again. Staging the
+    # checkpoint on CPU avoids that device round trip.
+    map_location = "cpu"
 
     pin_memory = accelerator not in ("cpu", "mps")
 
