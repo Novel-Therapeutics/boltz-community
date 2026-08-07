@@ -72,7 +72,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 
 **Performance improvements:**
 - Added optional FlashAttention-2 / PyTorch SDPA acceleration for triangle attention and pair-biased attention via `--flash_attn` (off by default). Reduces attention memory footprint and speeds up inference on Ampere+ GPUs while remaining numerically equivalent to the manual einsum path within float-precision tolerance (verified by parity tests)
-- Model weights now load directly to GPU instead of CPU-then-transfer
+- Inference checkpoints are deserialized on CPU and then moved to the accelerator once by Lightning, instead of being deserialized straight onto the accelerator. Lightning builds the module on CPU, so loading a device-resident checkpoint copies every tensor back to CPU one at a time before the finished module is moved to the device again; staging on CPU skips that round trip. Measured ~1.75s faster on a warm cache on a T4 — cold loads are dominated by disk throughput and change little — with byte-identical predictions. (Distinct from the module-level tensor allocation below, which concerns tensors created during the forward pass, not checkpoint loading.) Thanks to [@corinwagen](https://github.com/Novel-Therapeutics/boltz-community/pull/16).
 - Cached molecule file reads and symmetry deserialization across samples
 - Removed dead O(n_tokens × n_chains) loop in pocket distance computation
 - Tensors across model modules now allocated directly on device instead of CPU-then-transfer ([#654](https://github.com/jwohlwend/boltz/pull/654))
