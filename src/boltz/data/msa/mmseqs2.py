@@ -1,11 +1,12 @@
 # From https://github.com/sokrypton/ColabFold/blob/main/colabfold/colabfold.py
 
+import io
 import logging
 import os
 import random
 import tarfile
 import time
-from typing import Optional, Union, Dict
+from typing import Optional, Union
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -18,6 +19,19 @@ TQDM_BAR_FORMAT = (
 )
 
 
+def _validate_msa_archive(content: bytes, required_files: list[str]) -> None:
+    with tarfile.open(fileobj=io.BytesIO(content), mode="r:*") as archive:
+        archived_files = {
+            member.name for member in archive.getmembers() if member.isfile()
+        }
+
+    missing_files = [name for name in required_files if name not in archived_files]
+    if missing_files:
+        missing = ", ".join(missing_files)
+        message = f"MSA result archive is missing required files: {missing}"
+        raise tarfile.ReadError(message)
+
+
 def run_mmseqs2(  # noqa: PLR0912, D103, C901, PLR0915
     x: Union[str, list[str]],
     prefix: str = "tmp",
@@ -28,9 +42,12 @@ def run_mmseqs2(  # noqa: PLR0912, D103, C901, PLR0915
     host_url: str = "https://api.colabfold.com",
     msa_server_username: Optional[str] = None,
     msa_server_password: Optional[str] = None,
-    auth_headers: Optional[Dict[str, str]] = None,
+    auth_headers: Optional[dict[str, str]] = None,
 ) -> tuple[list[str], list[str]]:
     submission_endpoint = "ticket/pair" if use_pairing else "ticket/msa"
+    required_msa_files = ["pair.a3m"] if use_pairing else ["uniref.a3m"]
+    if use_env and not use_pairing:
+        required_msa_files.append("bfd.mgnify30.metaeuk30.smag30.a3m")
 
     # Validate mutually exclusive authentication methods
     has_basic_auth = msa_server_username and msa_server_password
@@ -141,6 +158,8 @@ def run_mmseqs2(  # noqa: PLR0912, D103, C901, PLR0915
                     f"{host_url}/result/download/{ID}", timeout=300, headers=headers, auth=auth
                 )
                 logger.debug(f"MSA download response status: {res.status_code}")
+                res.raise_for_status()
+                _validate_msa_archive(res.content, required_msa_files)
             except Exception as e:
                 error_count += 1
                 logger.warning(
@@ -254,12 +273,7 @@ def run_mmseqs2(  # noqa: PLR0912, D103, C901, PLR0915
             download(ID, tar_gz_file)
 
     # prep list of a3m files
-    if use_pairing:
-        a3m_files = [f"{path}/pair.a3m"]
-    else:
-        a3m_files = [f"{path}/uniref.a3m"]
-        if use_env:
-            a3m_files.append(f"{path}/bfd.mgnify30.metaeuk30.smag30.a3m")
+    a3m_files = [f"{path}/{name}" for name in required_msa_files]
 
     # extract a3m files
     if any(not os.path.isfile(a3m_file) for a3m_file in a3m_files):

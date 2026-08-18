@@ -62,6 +62,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed affinity prediction running 5× slower than necessary: upstream hardcoded `max_parallel_samples=1` for the affinity diffusion path, which was silently masked by upstream's buggy `chunk(multiplicity % max + 1)` math (the divisible case collapsed to `chunk(1)`, batching all samples in one pass). When our earlier diffusion fix replaced that with the correct `split(max_parallel_samples)`, the hardcoded `1` started to actually take effect, forcing N sequential single-sample forward passes per affinity record. The affinity path now honors the user's `--max_parallel_samples`, capped at `--diffusion_samples_affinity` so it doesn't claim more parallelism than diffusion will run.
 - Fixed uncatchable RDKit abort on salt-form ligand SMILES — `standardize()` now primes the implicit-valence cache with `UpdatePropertyCache(strict=False)` before `LargestFragmentChooser`, so a single bad SMILES (e.g. salts containing a terminal alkyne such as `C#CCN(C)CC(=C)c1ccc(Cl)c(Cl)c1.O=C(O)C(=O)O`) no longer takes down the entire affinity batch via a C++ pre-condition violation that Python `try/except` can't catch
 - Bumped MSA submit POST and result-download timeouts from 6.02s to 300s (status polling stays at 6.02s) — eliminates spurious timeouts on `api.colabfold.com` requests for larger sequences or slower networks ([#688](https://github.com/jwohlwend/boltz/pull/688))
+- Fixed transient MSA download responses being cached as `out.tar.gz` and later failing with a cryptic `tarfile.ReadError` — result downloads now require a successful HTTP response and a readable archive containing the expected A3M files before they are saved
 
 **Improvements:**
 - Published to PyPI as [`boltz-community`](https://pypi.org/project/boltz-community/) — `pip install boltz-community` and `uv add boltz-community` now work without the git URL ([#12](https://github.com/Novel-Therapeutics/boltz-community/issues/12)). Releases are tag-driven via GitHub Actions + PyPI Trusted Publisher (OIDC, no long-lived tokens).
@@ -80,7 +81,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - `process_atom_features` pre-allocates output arrays and fills `atom_to_token` in one slice per token (eliminates per-atom appends)
 
 **Tests & CI:**
-- 283 tests in this fork vs. 5 tests in current upstream `jwohlwend/boltz`: unit tests (CPU), smoke tests (end-to-end inference), regression tests (golden output verification for Boltz-1 and Boltz-2), determinism tests, MSA trim subsequence matching (8 cases), diffusion chunking regression tests, Boltz-2 validation constructor coverage, and featurizer pre-allocation correctness
+- 284 tests in this fork vs. 5 tests in current upstream `jwohlwend/boltz`: unit tests (CPU), smoke tests (end-to-end inference), regression tests (golden output verification for Boltz-1 and Boltz-2), determinism tests, MSA trim subsequence matching (8 cases), diffusion chunking regression tests, Boltz-2 validation constructor coverage, and featurizer pre-allocation correctness
 - GitHub Actions CI with CPU runners (every push/PR) and GPU T4 runners (push to main)
 
 ## Contributing
