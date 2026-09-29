@@ -1129,7 +1129,7 @@ def _parse_devices(value: str) -> Union[int, List[int]]:
 )
 @click.option(
     "--accelerator",
-    type=click.Choice(["gpu", "cpu", "tpu", "mps"]),
+    type=click.Choice(["gpu", "cpu", "tpu", "mps", "xpu"]),
     help="The accelerator to use for prediction.",
     default="gpu",
 )
@@ -1400,7 +1400,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     """Run predictions with Boltz."""
     import torch
     from pytorch_lightning import Trainer, seed_everything
-    from pytorch_lightning.strategies import DDPStrategy
+    from pytorch_lightning.strategies import DDPStrategy, SingleDeviceStrategy
     from rdkit import Chem
 
     from boltz.data import const
@@ -1454,6 +1454,20 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             raise click.UsageError(msg)
         click.echo("Running on Apple Silicon GPU (MPS).")
 
+    # XPU (Intel GPU) validation and info
+    if accelerator == "xpu":
+        from boltz.xpu import register_xpu_accelerator, xpu_available
+
+        if not xpu_available():
+            msg = (
+                "XPU accelerator requested but not available. XPU requires an "
+                "Intel GPU and a PyTorch build with XPU support "
+                "(pip install torch --index-url https://download.pytorch.org/whl/xpu)."
+            )
+            raise click.UsageError(msg)
+        register_xpu_accelerator()
+        click.echo(f"Running on Intel GPU (XPU): {torch.xpu.get_device_name(0)}.")
+
     # Supress some lightning warnings
     warnings.filterwarnings(
         "ignore", ".*that has Tensor Cores. To properly utilize them.*"
@@ -1471,6 +1485,11 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     # Set seed if desired
     if seed is not None:
         seed_everything(seed)
+        # With default algorithms, XPU reruns differ in the last digits of the
+        # output. Deterministic algorithms make --seed byte-reproducible on XPU,
+        # as it already is on CUDA, for ~3% extra time.
+        if accelerator == "xpu":
+            torch.use_deterministic_algorithms(True, warn_only=True)
 
     for key in ["CUEQ_DEFAULT_CONFIG", "CUEQ_DISABLE_AOT_TUNING"]:
         # Disable kernel tuning by default,
@@ -1594,6 +1613,15 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             click.echo("Warning: MPS only supports a single device, ignoring --devices.")
         devices = 1
         strategy = "auto"
+    elif accelerator == "xpu":
+        # Single Intel GPU for now; multi-XPU DDP is not wired up
+        if (isinstance(devices, int) and devices > 1) or (
+            isinstance(devices, list) and len(devices) > 1
+        ):
+            click.echo("Warning: XPU currently supports a single device, using the first.")
+        device_index = devices[0] if isinstance(devices, list) else 0
+        devices = [device_index]
+        strategy = SingleDeviceStrategy(device=torch.device("xpu", device_index))
     elif (isinstance(devices, int) and devices > 1) or (
         isinstance(devices, list) and len(devices) > 1
     ):
@@ -1646,6 +1674,15 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     else:
         precision = "bf16-mixed"
 
+    # Lightning only knows how to autocast on cpu, mps and cuda: for any other
+    # accelerator a "bf16-mixed" flag becomes torch.autocast("cuda"), which does
+    # nothing on an Intel GPU and silently runs fp32. Pass the plugin explicitly.
+    precision_args: dict = {"precision": precision}
+    if accelerator == "xpu" and precision == "bf16-mixed":
+        from pytorch_lightning.plugins.precision import MixedPrecision
+
+        precision_args = {"plugins": [MixedPrecision("bf16-mixed", device="xpu")]}
+
     # Set up trainer
     trainer = Trainer(
         default_root_dir=out_dir,
@@ -1653,7 +1690,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         callbacks=[pred_writer],
         accelerator=accelerator,
         devices=devices,
-        precision=precision,
+        **precision_args,
     )
 
     # Lightning constructs the model on CPU before loading its state dict. If
@@ -1663,7 +1700,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     # checkpoint on CPU avoids that device round trip.
     map_location = "cpu"
 
-    pin_memory = accelerator not in ("cpu", "mps")
+    pin_memory = accelerator not in ("cpu", "mps", "xpu")
 
     if filtered_manifest.records:
         msg = f"Running structure prediction for {len(filtered_manifest.records)} input"

@@ -1036,6 +1036,8 @@ class Boltz2(LightningModule):
                         torch.cuda.empty_cache()
                     elif torch.backends.mps.is_available():
                         torch.mps.empty_cache()
+                    elif hasattr(torch, "xpu") and torch.xpu.is_available():
+                        torch.xpu.empty_cache()
                     gc.collect()
                     return
                 raise e
@@ -1059,6 +1061,8 @@ class Boltz2(LightningModule):
                         torch.cuda.empty_cache()
                     elif torch.backends.mps.is_available():
                         torch.mps.empty_cache()
+                    elif hasattr(torch, "xpu") and torch.xpu.is_available():
+                        torch.xpu.empty_cache()
                     gc.collect()
                     return
                 raise e
@@ -1149,6 +1153,8 @@ class Boltz2(LightningModule):
                     torch.cuda.empty_cache()
                 elif torch.backends.mps.is_available():
                     torch.mps.empty_cache()
+                elif hasattr(torch, "xpu") and torch.xpu.is_available():
+                    torch.xpu.empty_cache()
                 gc.collect()
                 return {"exception": True}
             else:
