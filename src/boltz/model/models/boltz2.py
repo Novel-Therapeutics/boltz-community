@@ -1032,11 +1032,12 @@ class Boltz2(LightningModule):
                 if "out of memory" in str(e):
                     msg = f"| WARNING: ran out of memory, skipping batch, {idx_dataset}"
                     print(msg)
-                    if torch.cuda.is_available():
+                    device_type = self.device.type
+                    if device_type == "cuda":
                         torch.cuda.empty_cache()
-                    elif torch.backends.mps.is_available():
+                    elif device_type == "mps":
                         torch.mps.empty_cache()
-                    elif hasattr(torch, "xpu") and torch.xpu.is_available():
+                    elif device_type == "xpu":
                         torch.xpu.empty_cache()
                     gc.collect()
                     return
@@ -1057,11 +1058,12 @@ class Boltz2(LightningModule):
                 if "out of memory" in str(e):
                     msg = f"| WARNING: ran out of memory, skipping batch, {idx_dataset}"
                     print(msg)
-                    if torch.cuda.is_available():
+                    device_type = self.device.type
+                    if device_type == "cuda":
                         torch.cuda.empty_cache()
-                    elif torch.backends.mps.is_available():
+                    elif device_type == "mps":
                         torch.mps.empty_cache()
-                    elif hasattr(torch, "xpu") and torch.xpu.is_available():
+                    elif device_type == "xpu":
                         torch.xpu.empty_cache()
                     gc.collect()
                     return
@@ -1149,11 +1151,12 @@ class Boltz2(LightningModule):
         except RuntimeError as e:  # catch out of memory exceptions
             if "out of memory" in str(e):
                 print("| WARNING: ran out of memory, skipping batch")
-                if torch.cuda.is_available():
+                device_type = self.device.type
+                if device_type == "cuda":
                     torch.cuda.empty_cache()
-                elif torch.backends.mps.is_available():
+                elif device_type == "mps":
                     torch.mps.empty_cache()
-                elif hasattr(torch, "xpu") and torch.xpu.is_available():
+                elif device_type == "xpu":
                     torch.xpu.empty_cache()
                 gc.collect()
                 return {"exception": True}

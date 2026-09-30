@@ -1487,7 +1487,10 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         seed_everything(seed)
         # With default algorithms, XPU reruns differ in the last digits of the
         # output. Deterministic algorithms make --seed byte-reproducible on XPU,
-        # as it already is on CUDA, for ~3% extra time.
+        # as it already is on CUDA, for ~3% extra time. warn_only=True makes this
+        # empirical, not guaranteed: it holds for the ops Boltz currently runs
+        # (none warned in testing); an op added later without a deterministic
+        # XPU kernel would warn instead of failing.
         if accelerator == "xpu":
             torch.use_deterministic_algorithms(True, warn_only=True)
 
