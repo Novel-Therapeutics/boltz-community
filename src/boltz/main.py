@@ -1208,11 +1208,13 @@ def _parse_devices(value: str) -> Union[int, List[int]]:
 @click.option(
     "--override",
     is_flag=True,
+    default=False,
     help="Override existing found predictions.",
 )
 @click.option(
     "--skip_bad_inputs",
     is_flag=True,
+    default=False,
     help="Skip invalid inputs instead of aborting. Default: abort on first error.",
 )
 @click.option(
@@ -1224,6 +1226,7 @@ def _parse_devices(value: str) -> Union[int, List[int]]:
 @click.option(
     "--use_msa_server",
     is_flag=True,
+    default=False,
     help="Whether to use the MMSeqs2 server for MSA generation.",
 )
 @click.option(
@@ -1265,6 +1268,7 @@ def _parse_devices(value: str) -> Union[int, List[int]]:
 @click.option(
     "--use_potentials",
     is_flag=True,
+    default=False,
     help="Whether to use potentials for steering.",
 )
 @click.option(
@@ -1288,6 +1292,7 @@ def _parse_devices(value: str) -> Union[int, List[int]]:
 @click.option(
     "--affinity_mw_correction",
     is_flag=True,
+    default=False,
     type=bool,
     help="Whether to add the Molecular Weight correction to the affinity value head.",
 )
@@ -1329,11 +1334,13 @@ def _parse_devices(value: str) -> Union[int, List[int]]:
 @click.option(
     "--no_kernels",
     is_flag=True,
+    default=False,
     help="Whether to disable the kernels.",
 )
 @click.option(
     "--flash_attn",
     is_flag=True,
+    default=False,
     help=(
         "Enable PyTorch scaled_dot_product_attention (FlashAttention-2 / "
         "memory-efficient attention) for all attention layers. "
@@ -1345,6 +1352,7 @@ def _parse_devices(value: str) -> Union[int, List[int]]:
 @click.option(
     "--write_embeddings",
     is_flag=True,
+    default=False,
     help="Whether to dump the s and z embeddings into a npz file.",
 )
 def predict(  # noqa: C901, PLR0915, PLR0912
