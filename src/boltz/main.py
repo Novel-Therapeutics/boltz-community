@@ -1466,7 +1466,10 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             )
             raise click.UsageError(msg)
         register_xpu_accelerator()
-        click.echo(f"Running on Intel GPU (XPU): {torch.xpu.get_device_name(0)}.")
+        xpu_index = devices[0] if isinstance(devices, list) else 0
+        click.echo(
+            f"Running on Intel GPU (XPU): {torch.xpu.get_device_name(xpu_index)}."
+        )
 
     # Supress some lightning warnings
     warnings.filterwarnings(
@@ -1622,9 +1625,8 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             isinstance(devices, list) and len(devices) > 1
         ):
             click.echo("Warning: XPU currently supports a single device, using the first.")
-        device_index = devices[0] if isinstance(devices, list) else 0
-        devices = [device_index]
-        strategy = SingleDeviceStrategy(device=torch.device("xpu", device_index))
+        devices = [xpu_index]
+        strategy = SingleDeviceStrategy(device=torch.device("xpu", xpu_index))
     elif (isinstance(devices, int) and devices > 1) or (
         isinstance(devices, list) and len(devices) > 1
     ):

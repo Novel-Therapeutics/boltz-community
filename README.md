@@ -6,6 +6,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 
 **Compatibility:**
 - Apple Silicon (MPS) support: `boltz predict --accelerator mps`
+- Intel GPU (XPU) support: `boltz predict --accelerator xpu`
 - Added `boltz-fix-macos-libomp` CLI to fix `OMP: Error #15` on macOS caused by multiple wheels (torch, scikit-learn) each bundling their own `libomp.dylib` — repoints the duplicates at a single canonical libomp via `install_name_tool` so only one OpenMP runtime is ever loaded, instead of silencing the safety check with `KMP_DUPLICATE_LIB_OK=TRUE` (which libomp's own docs warn is unsafe). Thanks to [@fnachon](https://github.com/Novel-Therapeutics/boltz-community/pull/15).
 - Dependency pins relaxed from `==` to `>=`
 - `fairscale` dependency removed — replaced with PyTorch built-in `torch.utils.checkpoint`
@@ -138,6 +139,21 @@ boltz-fix-macos-libomp
 ```
 
 Safe to re-run and to run again after upgrading torch or scikit-learn.
+
+### Intel GPUs (XPU)
+
+On Intel GPUs, install PyTorch's XPU build first, then Boltz, and run with `--accelerator xpu`:
+
+```
+pip install torch --index-url https://download.pytorch.org/whl/xpu
+pip install boltz-community
+boltz predict input.yaml --accelerator xpu --use_msa_server
+```
+
+XPU mode uses bf16 mixed precision, as on CUDA, and runs on a single device. To pick a card, set
+`ZE_AFFINITY_MASK=<index>`, the Intel counterpart of `CUDA_VISIBLE_DEVICES`. With `--seed`,
+deterministic algorithms are switched on so reruns are byte-identical (about 3% slower).
+Tested on an Intel Arc Pro B70 with PyTorch 2.14.
 
 ## Releasing
 
