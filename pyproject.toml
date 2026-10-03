@@ -132,4 +132,5 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "regression",
     "mps: requires Apple Silicon with MPS (run manually with '-m mps')",
+    "xpu: requires an Intel GPU with PyTorch XPU (run manually with '-m xpu')",
 ]
