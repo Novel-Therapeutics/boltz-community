@@ -6,7 +6,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 
 **Compatibility:**
 - Apple Silicon (MPS) support: `boltz predict --accelerator mps`
-- Intel GPU (XPU) support: `boltz predict --accelerator xpu`
+- Intel GPU (XPU) support: `boltz predict --accelerator xpu`. Thanks to [@UniversalBasicInc](https://github.com/Novel-Therapeutics/boltz-community/pull/20).
 - Added `boltz-fix-macos-libomp` CLI to fix `OMP: Error #15` on macOS caused by multiple wheels (torch, scikit-learn) each bundling their own `libomp.dylib` — repoints the duplicates at a single canonical libomp via `install_name_tool` so only one OpenMP runtime is ever loaded, instead of silencing the safety check with `KMP_DUPLICATE_LIB_OK=TRUE` (which libomp's own docs warn is unsafe). Thanks to [@fnachon](https://github.com/Novel-Therapeutics/boltz-community/pull/15).
 - Dependency pins relaxed from `==` to `>=`
 - `fairscale` dependency removed — replaced with PyTorch built-in `torch.utils.checkpoint`
@@ -82,7 +82,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - `process_atom_features` pre-allocates output arrays and fills `atom_to_token` in one slice per token (eliminates per-atom appends)
 
 **Tests & CI:**
-- 284 tests in this fork vs. 5 tests in current upstream `jwohlwend/boltz`: unit tests (CPU), smoke tests (end-to-end inference), regression tests (golden output verification for Boltz-1 and Boltz-2), determinism tests, MSA trim subsequence matching (8 cases), diffusion chunking regression tests, Boltz-2 validation constructor coverage, and featurizer pre-allocation correctness
+- 294 tests in this fork vs. 5 tests in current upstream `jwohlwend/boltz`: unit tests (CPU), smoke tests (end-to-end inference), regression tests (golden output verification for Boltz-1 and Boltz-2), determinism tests, MSA trim subsequence matching (8 cases), diffusion chunking regression tests, Boltz-2 validation constructor coverage, and featurizer pre-allocation correctness
 - GitHub Actions CI with CPU runners (every push/PR) and GPU T4 runners (push to main)
 
 ## Contributing
@@ -152,7 +152,8 @@ boltz predict input.yaml --accelerator xpu --use_msa_server
 
 XPU mode uses bf16 mixed precision, as on CUDA, and runs on a single device. To pick a card, set
 `ZE_AFFINITY_MASK=<index>`, the Intel counterpart of `CUDA_VISIBLE_DEVICES`. With `--seed`,
-deterministic algorithms are switched on so reruns are byte-identical (about 3% slower).
+deterministic algorithms are switched on (about 3% slower); reruns were byte-identical in testing, but
+this is empirical for the operations Boltz uses today rather than guaranteed.
 Tested on an Intel Arc Pro B70 with PyTorch 2.14.
 
 ## Releasing
