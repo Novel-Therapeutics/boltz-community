@@ -50,6 +50,10 @@ from boltz.data.types import (
     TemplateInfo,
 )
 
+# Longest chain id the Chain record can hold (its "name" field is fixed-width).
+MAX_CHAIN_NAME_LENGTH = np.dtype(dict(Chain)["name"]).itemsize // np.dtype("<U1").itemsize
+
+
 logger = logging.getLogger(__name__)
 
 ####################################################################################################
@@ -1133,6 +1137,17 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 seq = str(item[entity_type]["smiles"])
             else:
                 seq = str(item[entity_type]["ccd"])
+
+        # Chain names are stored in a fixed-width field; a longer name is
+        # silently truncated and later lookups fail with an opaque KeyError.
+        chain_ids = item[entity_type]["id"]
+        for chain_id in [chain_ids] if isinstance(chain_ids, str) else chain_ids:
+            if len(str(chain_id)) > MAX_CHAIN_NAME_LENGTH:
+                msg = (
+                    f"Chain id '{chain_id}' in {path.name} is too long: chain ids "
+                    f"can have at most {MAX_CHAIN_NAME_LENGTH} characters."
+                )
+                raise ValueError(msg)
 
         # Group items by entity
         items_to_group.setdefault((entity_type, seq), []).append(item)

@@ -627,3 +627,35 @@ class TestAffinityParsing:
             chain for chain in target.record.chains if chain.entity_id == 1
         ]
         assert [chain.chain_name for chain in ligand_chains] == ["L1", "L2"]
+
+
+class TestChainIdLength:
+    """Chain ids longer than the stored field used to fail with an opaque KeyError.
+
+    Reported upstream by @alexcritschristoph in jwohlwend/boltz#181.
+    """
+
+    @staticmethod
+    def _schema(chain_id):
+        return {
+            "version": 1,
+            "sequences": [{"ligand": {"id": chain_id, "smiles": "CCO"}}],
+        }
+
+    def test_limit_matches_the_stored_field(self):
+        from boltz.data.parse.schema import MAX_CHAIN_NAME_LENGTH
+
+        assert MAX_CHAIN_NAME_LENGTH == 5
+
+    def test_longest_allowed_id_parses(self):
+        from boltz.data.parse.schema import parse_boltz_schema
+
+        target = parse_boltz_schema(Path("test.yaml"), self._schema("ABCDE"), ccd={}, boltz_2=True)
+        assert [str(c["name"]) for c in target.structure.chains] == ["ABCDE"]
+
+    @pytest.mark.parametrize("chain_id", ["ABCDEF", ["L1", "LIGAND"]])
+    def test_too_long_id_raises_clear_error(self, chain_id):
+        from boltz.data.parse.schema import parse_boltz_schema
+
+        with pytest.raises(ValueError, match="at most 5 characters"):
+            parse_boltz_schema(Path("test.yaml"), self._schema(chain_id), ccd={}, boltz_2=True)
