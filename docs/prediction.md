@@ -80,7 +80,7 @@ The `modifications` field is optional and allows specification of modified resid
 - `position`: index of the residue (starting from 1)  
 - `ccd`: CCD code of the modified residue (currently supported only for CCD ligands)  
 
-Chirality of modified residues is only enforced with `--use_potentials`. Without it, the stereochemistry of chiral modified residues, such as D-amino acids (`DVA`, `DAL`, …), comes from the model alone and can come out inverted or flattened: in a test on cyclo-(Phe-D-Val)₃, two of nine D-valines were inverted across three seeds without `--use_potentials`, and all nine were correct with it. `boltz predict` prints a warning when an input has such residues and `--use_potentials` is off.
+Chirality of modified residues, such as D-amino acids (`DVA`, `DAL`, …), is only enforced with `--use_potentials`; see [Stereochemistry](#stereochemistry) below.
 
 The `cyclic` flag indicates whether a polymer chain (not ligands) is cyclic, joined head to tail. The model receives it as positional information; no bond is added to the input. mmCIF output records the head-to-tail closing bond (C–N for proteins, O3′–P for DNA and RNA) as a covalent `_struct_conn` entry; PDB output does not.
 
@@ -137,6 +137,16 @@ Examples of common options include:
 * Adding `--use_msa_server` flag, Boltz auto-generates the MSA using the mmseqs2 server. 
 
 * Adding the `--use_potentials` flag, Boltz uses an inference time potential that significantly improve the physical quality of the poses. The potentials also steer the pose sampled for affinity prediction, so the affinity is computed on a pose with the requested stereochemistry; this makes the affinity step about 2.4x slower.
+
+#### Stereochemistry
+
+Stereocentres, in ligands and in modified residues, are only enforced with `--use_potentials`. Without it, stereochemistry comes from the model alone, and it is often wrong. In a test on six chiral molecules (1 to 8 stereocentres each), predicted with and without a protein, each as given and as its mirror image:
+
+- Without `--use_potentials`, about a quarter of samples had every stereocentre correct (15 of 60 alone, 8 of 30 in a protein). Mirror images of common molecules fared worst: they were usually predicted as the common form, for example dexamethasone in place of its enantiomer. Whole molecules were also sometimes predicted as their mirror image.
+- With `--use_potentials`, every stereocentre came out correct, but 4 of 90 samples of rigid fused-ring molecules (morphine, a steroid) had a ring bond pulled apart instead. Sampling took 2.4 to 3 times as long.
+- Confidence scores do not reveal either problem.
+
+`boltz predict` prints a warning when an input has stereocentres and `--use_potentials` is off. Check the stereochemistry of predictions you rely on, especially for uncommon stereoisomers. The affinity step uses the predicted pose with the highest ipTM, so a wrong stereoisomer can also affect affinity.
 
 * To predict a structure using 10 recycling steps and 25 samples (the default parameters for AlphaFold3) use (note however that the prediction will take significantly longer): `--recycling_steps 10 --diffusion_samples 25`
 
