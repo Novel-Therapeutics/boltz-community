@@ -193,7 +193,7 @@ out_dir/
     ├── [input_file1]/
         ├── [input_file1]_model_0.cif                          # The predicted structure in CIF format, with the inclusion of per token pLDDT scores
         ├── confidence_[input_file1]_model_0.json              # The confidence scores (confidence_score, ptm, iptm, ligand_iptm, protein_iptm, complex_plddt, complex_iplddt, complex_pde, complex_ipde, complex_pae, complex_ipae, chains_ptm, pair_chains_iptm, chains_pae, pair_chains_pae, and the _unweighted variants of the four PAE summaries)
-        ├── affinity_[input_file1].json                        # The affinity scores (affinity_pred_value, affinity_probability_binary, affinity_pred_value1, affinity_probability_binary1, affinity_pred_value2, affinity_probability_binary2)
+        ├── affinity_[input_file1].json                        # The affinity scores (affinity_pred_value, affinity_probability_binary, affinity_pred_value1, affinity_probability_binary1, affinity_pred_value2, affinity_probability_binary2, affinity_pose_passed_checks)
 
         ├── pae_[input_file1]_model_0.npz                      # The predicted PAE score for every pair of tokens
         ├── pde_[input_file1]_model_0.npz                      # The predicted PDE score for every pair of tokens
@@ -264,7 +264,13 @@ Each output folder includes a confidence `.json` file with aggregated confidence
             "0": 7.6603,
             "1": null
         }
-    }
+    },
+    "chiral_centers_checked": 8,      # Stereocentres in ligands and modified residues that were checked (Boltz-2)
+    "chiral_centers_inverted": 0,     # ... predicted as their mirror image
+    "chiral_centers_flattened": 0,    # ... predicted nearly planar
+    "bonds_checked": 31,              # Bonds in ligands and modified residues that were checked
+    "bonds_out_of_range": 0,          # ... more than 25% outside their normal length
+    "structure_checks_passed": true   # No inverted or flattened stereocentre and no out-of-range bond
 }
 ```
 `confidence_score`, `ptm` and `plddt` scores (and their interface and individual chain analogues) have a range of [0, 1], where higher values indicate higher confidence. `pde` and `pae` scores have a unit of angstroms, where lower values indicate higher confidence. The aggregated `complex_pde`, `complex_ipde`, `complex_pae`, `complex_ipae`, `chains_pae`, and `pair_chains_pae` values are contact-weighted: each token pair counts in proportion to its predicted probability of being in contact, taken from the distogram. This is how Boltz aggregates PDE.
@@ -286,6 +292,15 @@ Two caveats when using the unweighted values for binder screening:
 
 Both sets exclude padding and the diagonal. The unweighted values also exclude tokens without a valid frame on the aligned axis, as pTM and ipTM do, and match the definition proposed for upstream Boltz in [jwohlwend/boltz#707](https://github.com/jwohlwend/boltz/pull/707). `pair_chains_pae[i][j]` is the error of chain `j` when the structure is aligned on chain `i`, so it is not symmetric. Fields with no valid token pairs are written as `null`.
 
+**Structure checks (Boltz-2).** The confidence scores measure positional error, not stereochemistry, so a sample with an inverted stereocentre scores the same as a correct one. Each sample is therefore checked against the same chirality and bond constraints that `--use_potentials` enforces:
+
+- A stereocentre is *inverted* when its improper dihedral has the opposite sign to the input's configuration, and *flattened* when it is within 10° of planar. Real stereocentres sit at roughly 29–40°.
+- A bond is *out of range* when its length is more than 25% outside its expected range. This catches bonds pulled apart (for example a ring C–C stretched to 2–3 Å), not ordinary strain.
+
+The checks cover ligands and modified residues, the parts that carry these constraints; standard amino acids and nucleotides are not checked. `structure_checks_passed` is `false` when any stereocentre is inverted or flattened, or any bond is out of range, and `boltz predict` prints how many written models failed. Failures are common without `--use_potentials` for molecules with stereocentres.
+
+When predicting affinity, Boltz-2 computes it on the sample with the highest ipTM. That sample is now chosen among the samples that pass the checks, if any do; if all pass or none does, the choice is unchanged. `affinity_pose_passed_checks` in the affinity JSON says whether the pose used passed.
+
 The output affinity `.json` file is organized as follows:
 ```yaml
 {
@@ -295,6 +310,7 @@ The output affinity `.json` file is organized as follows:
     "affinity_probability_binary1": 0.0,       # Predicted binding likelihood from the first model in the ensemble
     "affinity_pred_value2": 0.8225,            # Predicted binding affinity from the second model of the ensemble
     "affinity_probability_binary2": 0.8402,    # Predicted binding likelihood from the second model in the ensemble
+    "affinity_pose_passed_checks": true,       # Whether the pose used for affinity passed the structure checks
 }
 ```
 

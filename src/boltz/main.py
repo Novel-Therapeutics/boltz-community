@@ -1838,6 +1838,20 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             return_predictions=False,
         )
 
+        if pred_writer.models_failing_checks:
+            hint = (
+                ""
+                if use_potentials
+                else " Re-running with --use_potentials usually fixes stereocentres."
+            )
+            click.echo(
+                f"\nWarning: {pred_writer.models_failing_checks} of "
+                f"{pred_writer.models_checked} predicted structures have inverted or "
+                "flattened stereocentres or bonds far outside their normal length; "
+                "structure_checks_passed is false in their confidence JSON."
+                + hint
+            )
+
         if pred_writer.failed:
             click.echo(
                 f"\nWarning: {pred_writer.failed} structure prediction(s) failed "

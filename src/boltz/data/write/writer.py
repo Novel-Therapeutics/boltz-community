@@ -19,6 +19,7 @@ from boltz.data.types import (
 )
 from boltz.data.write.mmcif import to_mmcif
 from boltz.data.write.pdb import to_pdb
+from boltz.model.layers.structure_checks import CHECK_KEYS
 
 
 def _serialize_summary_value(value: object) -> object:
@@ -87,6 +88,9 @@ class BoltzWriter(BasePredictionWriter):
         self.output_dir = Path(output_dir)
         self.output_format = output_format
         self.failed = 0
+        # Written models whose stereocentres or bonds fail the structure checks.
+        self.models_checked = 0
+        self.models_failing_checks = 0
         self.boltz2 = boltz2
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.write_embeddings = write_embeddings
@@ -152,6 +156,7 @@ class BoltzWriter(BasePredictionWriter):
             "complex_ipae_unweighted",
             "chains_pae_unweighted",
             "pair_chains_pae_unweighted",
+            *CHECK_KEYS,
             "pair_chains_iptm",
         ):
             if key in prediction:
@@ -338,6 +343,20 @@ class BoltzWriter(BasePredictionWriter):
                         confidence_summary_dict["pair_chains_pae_unweighted"] = _select_prediction_value(
                             prediction["pair_chains_pae_unweighted"], start + model_idx
                         )
+                    if CHECK_KEYS[0] in prediction:
+                        checks = {
+                            key: int(prediction[key][start + model_idx])
+                            for key in CHECK_KEYS
+                        }
+                        passed = (
+                            checks["chiral_centers_inverted"] == 0
+                            and checks["chiral_centers_flattened"] == 0
+                            and checks["bonds_out_of_range"] == 0
+                        )
+                        confidence_summary_dict.update(checks)
+                        confidence_summary_dict["structure_checks_passed"] = passed
+                        self.models_checked += 1
+                        self.models_failing_checks += not passed
                     path = struct_dir / f"confidence_{rank_suffix}.json"
                     with path.open("w") as f:
                         json.dump(confidence_summary_dict, f, indent=4)
@@ -444,6 +463,13 @@ class BoltzAffinityWriter(BasePredictionWriter):
             affinity_summary["affinity_pred_value2"] = pred_affinity_value2.item()
             affinity_summary["affinity_probability_binary2"] = (
                 pred_affinity_probability2.item()
+            )
+
+        if "affinity_pose_passed_checks" in prediction:
+            # Whether the pose the affinity was computed on has correct
+            # stereocentres and bond lengths (see structure_checks_passed).
+            affinity_summary["affinity_pose_passed_checks"] = bool(
+                prediction["affinity_pose_passed_checks"].item()
             )
 
         # Save the affinity summary

@@ -24,6 +24,11 @@ from boltz.model.modules.confidencev2 import ConfidenceModule
 from boltz.model.modules.diffusion_conditioning import DiffusionConditioning
 from boltz.model.modules.diffusionv2 import AtomDiffusion
 from boltz.model.modules.encodersv2 import RelativePositionEncoder
+from boltz.model.layers.structure_checks import (
+    check_structures,
+    passes_checks,
+    select_affinity_sample,
+)
 from boltz.model.modules.utils import autocast_device_type
 from boltz.model.modules.trunkv2 import (
     BFactorModule,
@@ -556,6 +561,15 @@ class Boltz2(LightningModule):
                     )
                     dict_out.update(struct_out)
 
+                if not self.training:
+                    # Stereochemistry and bond geometry of each sample, which the
+                    # confidence scores do not reflect.
+                    dict_out["structure_checks"] = check_structures(
+                        dict_out["sample_atom_coords"].detach(),
+                        feats,
+                        diffusion_samples,
+                    )
+
                 if self.predict_bfactor:
                     pbfactor = self.bfactor_module(s)
                     dict_out["pbfactor"] = pbfactor
@@ -632,8 +646,15 @@ class Boltz2(LightningModule):
             )
             z_affinity = z * cross_pair_mask[None, :, :, None]
 
-            argsort = torch.argsort(dict_out["iptm"], descending=True)
-            best_idx = argsort[0].item()
+            # Highest-ipTM sample, preferring samples that pass the structure
+            # checks: ipTM does not detect an inverted stereocentre.
+            if "structure_checks" in dict_out:
+                passed = passes_checks(dict_out["structure_checks"])
+                best_idx = select_affinity_sample(dict_out["iptm"], passed)
+                dict_out["affinity_pose_passed_checks"] = passed[best_idx : best_idx + 1]
+            else:
+                argsort = torch.argsort(dict_out["iptm"], descending=True)
+                best_idx = argsort[0].item()
             coords_affinity = dict_out["sample_atom_coords"].detach()[best_idx][
                 None, None
             ]
@@ -1136,7 +1157,13 @@ class Boltz2(LightningModule):
                     pred_dict["ligand_iptm"] = out["ligand_iptm"]
                     pred_dict["protein_iptm"] = out["protein_iptm"]
                     pred_dict["pair_chains_iptm"] = out["pair_chains_iptm"]
+            if "structure_checks" in out:
+                pred_dict.update(out["structure_checks"])
             if self.affinity_prediction:
+                if "affinity_pose_passed_checks" in out:
+                    pred_dict["affinity_pose_passed_checks"] = out[
+                        "affinity_pose_passed_checks"
+                    ]
                 pred_dict["affinity_pred_value"] = out["affinity_pred_value"]
                 pred_dict["affinity_probability_binary"] = out[
                     "affinity_probability_binary"
