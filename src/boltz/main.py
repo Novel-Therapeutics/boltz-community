@@ -1108,6 +1108,46 @@ def _parse_devices(value: str) -> Union[int, List[int]]:
     return int(value)
 
 
+def _records_with_polymer_chiral_centers(
+    processed: "BoltzProcessedInput", boltz2: bool
+) -> list[str]:
+    """Return ids of records with chiral non-standard residues in polymer chains.
+
+    Such residues (D-amino acids, for example) get chiral atom constraints, but
+    those are only applied during sampling when --use_potentials is set.
+    Without it, their stereochemistry comes from the model alone, which can
+    invert or flatten it.
+    """
+    import numpy as np
+
+    from boltz.data import const
+    from boltz.data.types import ResidueConstraints, Structure, StructureV2
+
+    if processed.constraints_dir is None:
+        return []
+
+    structure_cls = StructureV2 if boltz2 else Structure
+    nonpolymer = const.chain_type_ids["NONPOLYMER"]
+    flagged = []
+    for record in processed.manifest.records:
+        path = processed.constraints_dir / f"{record.id}.npz"
+        if not path.exists():
+            continue
+        chiral = ResidueConstraints.load(path).chiral_atom_constraints
+        if len(chiral) == 0:
+            continue
+        structure = structure_cls.load(processed.targets_dir / f"{record.id}.npz")
+        in_polymer = np.zeros(len(structure.atoms), dtype=bool)
+        for chain in structure.chains:
+            if int(chain["mol_type"]) != nonpolymer:
+                start = int(chain["atom_idx"])
+                in_polymer[start : start + int(chain["atom_num"])] = True
+        centers = chiral["atom_idxs"][:, 3]
+        if in_polymer[centers].any():
+            flagged.append(record.id)
+    return flagged
+
+
 @cli.command(context_settings={"show_default": True})
 @click.argument("data", type=click.Path(exists=True))
 @click.option(
@@ -1624,6 +1664,20 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             (processed_dir / "mols") if (processed_dir / "mols").exists() else None
         ),
     )
+
+    if not use_potentials:
+        flagged = _records_with_polymer_chiral_centers(
+            processed, boltz2=model == "boltz2"
+        )
+        if flagged:
+            shown = ", ".join(flagged[:5]) + (" ..." if len(flagged) > 5 else "")
+            click.echo(
+                f"Warning: {len(flagged)} input(s) have chiral non-standard residues "
+                f"(such as D-amino acids) in a protein or nucleic-acid chain: {shown}. "
+                "Chirality is only enforced with --use_potentials; without it these "
+                "residues can come out with inverted or flattened stereochemistry. "
+                "Consider re-running with --use_potentials."
+            )
 
     # Set up trainer
     strategy = "auto"

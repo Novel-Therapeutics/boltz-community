@@ -80,7 +80,9 @@ The `modifications` field is optional and allows specification of modified resid
 - `position`: index of the residue (starting from 1)  
 - `ccd`: CCD code of the modified residue (currently supported only for CCD ligands)  
 
-The `cyclic` flag indicates whether a polymer chain (not ligands) is cyclic. The model receives it as positional information; no bond is added to the input. mmCIF output records the head-to-tail closing bond (C–N for proteins, O3′–P for DNA and RNA) as a covalent `_struct_conn` entry; PDB output does not.
+Chirality of modified residues is only enforced with `--use_potentials`. Without it, the stereochemistry of chiral modified residues, such as D-amino acids (`DVA`, `DAL`, …), comes from the model alone and can come out inverted or flattened: in a test on cyclo-(Phe-D-Val)₃, two of nine D-valines were inverted across three seeds without `--use_potentials`, and all nine were correct with it. `boltz predict` prints a warning when an input has such residues and `--use_potentials` is off.
+
+The `cyclic` flag indicates whether a polymer chain (not ligands) is cyclic, joined head to tail. The model receives it as positional information; no bond is added to the input. mmCIF output records the head-to-tail closing bond (C–N for proteins, O3′–P for DNA and RNA) as a covalent `_struct_conn` entry; PDB output does not.
 
 ### Constraints
 
