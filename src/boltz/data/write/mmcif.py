@@ -87,12 +87,81 @@ def _cross_residue_bonds(structure: Structure):
         yield connection
 
 
+# Atoms joined by the ring-closing bond of a head-to-tail cyclic polymer:
+# (atom on the last residue, atom on the first residue).
+_CYCLIC_CLOSURE_ATOMS = {
+    const.chain_type_ids["PROTEIN"]: ("C", "N"),
+    const.chain_type_ids["DNA"]: ("O3'", "P"),
+    const.chain_type_ids["RNA"]: ("O3'", "P"),
+}
+
+
+def _cyclic_closure_bonds(structure: Structure, boltz2: bool):
+    """Yield the head-to-tail bond of each cyclic polymer chain.
+
+    ``cyclic: true`` reaches the model only as positional information; no bond is
+    stored for the ring closure, so without this the written file describes an
+    open chain and viewers draw a gap in the ring. Each bond is a mapping with
+    the same keys as a ``Connection`` record.
+    """
+    for chain in structure.chains:
+        atom_names = _CYCLIC_CLOSURE_ATOMS.get(int(chain["mol_type"]))
+        n_res = int(chain["res_num"])
+        if atom_names is None or n_res < 2:
+            continue
+        if int(chain["cyclic_period"]) != n_res:
+            # Only a cycle through the whole chain has a defined closing bond.
+            continue
+
+        first = int(chain["res_idx"])
+        last = first + n_res - 1
+        endpoints = []
+        for res_idx, name in ((last, atom_names[0]), (first, atom_names[1])):
+            res = structure.residues[res_idx]
+            start = int(res["atom_idx"])
+            match = [
+                start + i
+                for i, atom in enumerate(
+                    structure.atoms[start : start + int(res["atom_num"])]
+                )
+                if _atom_name(atom, boltz2) == name
+            ]
+            endpoints.append(match[0] if match else None)
+
+        if None in endpoints:
+            logger.warning(
+                "Cyclic chain %s: no %s/%s atom pair for the ring-closing bond; "
+                "not writing it.",
+                chain["name"],
+                *atom_names,
+            )
+            continue
+
+        yield {
+            "chain_1": int(chain["asym_id"]),
+            "chain_2": int(chain["asym_id"]),
+            "res_1": last,
+            "res_2": first,
+            "atom_1": endpoints[0],
+            "atom_2": endpoints[1],
+        }
+
+
 def _struct_conn_rows(structure: Structure, boltz2: bool) -> list[tuple]:
     """Create struct_conn rows for cross-residue covalent bonds."""
     rows = []
     chain_by_id = {int(chain["asym_id"]): chain for chain in structure.chains}
 
-    for bond in _cross_residue_bonds(structure):
+    bonds = list(_cross_residue_bonds(structure))
+    written = {
+        frozenset((int(b["atom_1"]), int(b["atom_2"]))) for b in bonds
+    }
+    for closure in _cyclic_closure_bonds(structure, boltz2):
+        # Skip if the input already declared this bond as a constraint.
+        if frozenset((closure["atom_1"], closure["atom_2"])) not in written:
+            bonds.append(closure)
+
+    for bond in bonds:
         chain_1 = chain_by_id.get(int(bond["chain_1"]))
         chain_2 = chain_by_id.get(int(bond["chain_2"]))
         if chain_1 is None or chain_2 is None:

@@ -329,3 +329,51 @@ _struct_conn.id appears here as prose, not as a tag.
         rows = _struct_conn_rows(cif_str)
         assert len(rows) == 1
         assert rows[0]["id"] == "covale1"
+
+
+class TestCyclicClosureBond:
+    """``cyclic: true`` stores no bond, so the ring closure used to be missing.
+
+    Reported upstream by @TSC2412 in jwohlwend/boltz#710.
+    """
+
+    @staticmethod
+    def _cyclic(structure, period=None):
+        chains = structure.chains.copy()
+        chains[0]["cyclic_period"] = chains[0]["res_num"] if period is None else period
+        return replace(structure, chains=chains)
+
+    def test_cyclic_chain_gets_head_to_tail_bond(self, minimal_structure):
+        rows = _struct_conn_rows(to_mmcif(self._cyclic(minimal_structure)))
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["conn_type_id"] == "covale"
+        assert (row["ptnr1_label_comp_id"], row["ptnr1_label_seq_id"], row["ptnr1_label_atom_id"]) == ("VAL", "3", "C")
+        assert (row["ptnr2_label_comp_id"], row["ptnr2_label_seq_id"], row["ptnr2_label_atom_id"]) == ("ALA", "1", "N")
+        last_c = minimal_structure.atoms[12]["coords"]
+        first_n = minimal_structure.atoms[0]["coords"]
+        assert float(row["pdbx_dist_value"]) == pytest.approx(
+            float(np.linalg.norm(last_c - first_n)), abs=1e-3
+        )
+
+    def test_linear_chain_has_no_closure_bond(self, minimal_structure):
+        assert "_struct_conn" not in to_mmcif(minimal_structure)
+
+    def test_partial_period_is_not_closed(self, minimal_structure):
+        """Only a cycle through the whole chain has a defined closing bond."""
+        assert "_struct_conn" not in to_mmcif(self._cyclic(minimal_structure, period=2))
+
+    def test_declared_closure_bond_is_not_duplicated(self, minimal_structure):
+        structure = self._cyclic(minimal_structure)
+        connection = np.zeros(1, dtype=structure.connections.dtype)
+        connection[0]["chain_1"] = connection[0]["chain_2"] = 0
+        connection[0]["res_1"], connection[0]["res_2"] = 2, 0
+        connection[0]["atom_1"], connection[0]["atom_2"] = 12, 0
+        structure = replace(structure, connections=connection)
+        assert len(_struct_conn_rows(to_mmcif(structure))) == 1
+
+    def test_gemmi_sees_the_ring_bond(self, minimal_structure):
+        gemmi = pytest.importorskip("gemmi")
+        doc = gemmi.cif.read_string(to_mmcif(self._cyclic(minimal_structure)))
+        st = gemmi.make_structure_from_block(doc[0])
+        assert len(st.connections) == 1
