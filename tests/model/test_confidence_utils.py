@@ -51,8 +51,9 @@ def test_compute_pae_summaries_are_contact_weighted_and_nan_when_undefined():
 
 
 # --- Unweighted PAE summaries -------------------------------------------------
-# Hand-computed cases ported from upstream Boltz PR #707, which defines these
-# values, so the *_unweighted fields stay comparable with upstream.
+# Hand-computed cases ported from upstream Boltz PR #707 by @AtharvaTilewale
+# (https://github.com/jwohlwend/boltz/pull/707), which defines these values,
+# so the *_unweighted fields stay comparable with upstream.
 
 def _feats(asym_ids, pad_mask=None):
     asym_id = torch.tensor([asym_ids])
