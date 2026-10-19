@@ -300,6 +300,8 @@ The `affinity_pred_value` aims to measure the specific affinity of different bin
 
 `ΔG_binding [kcal/mol] ≈ -1.363 × (6 - affinity_pred_value)`
 
+Here `6 - affinity_pred_value` is the pIC50, which is dimensionless. Converting it to ΔG additionally treats the IC50 as if it were an equilibrium dissociation constant, at 298 K and a 1 M standard state. Use the result with caution: an IC50 depends on the assay (for example on substrate concentration in an enzyme assay) and is not in general equal to K<sub>d</sub> or K<sub>i</sub>, so this ΔG is an estimate on a free-energy scale, not a measured binding free energy.
+
 <details>
   <summary>Full derivation of ΔG_binding via pIC50 </summary>
 
