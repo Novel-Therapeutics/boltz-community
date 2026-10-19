@@ -7,6 +7,25 @@ from boltz.data import const
 from boltz.data.types import Structure
 
 
+_CONECT_REPEATS = {
+    const.bond_type_ids["DOUBLE"]: 2,
+    const.bond_type_ids["TRIPLE"]: 3,
+}
+
+
+def _conect_bond_order(bond) -> int:
+    """Return how many times to list a bond's partner in its CONECT record.
+
+    Listing a partner twice (double) or three times (triple) is the common,
+    if unofficial, convention RDKit, Open Babel and PyMOL use for bond order.
+    Covalent connection records (``Connection``) carry no bond type and are
+    written once, like single, aromatic and other bonds.
+    """
+    if "type" not in (bond.dtype.names or ()):
+        return 1
+    return _CONECT_REPEATS.get(int(bond["type"]), 1)
+
+
 def to_pdb(
     structure: Structure,
     plddts: Optional[Tensor] = None,
@@ -153,7 +172,7 @@ def to_pdb(
             continue
         atom1_idx = atom_reindex_ter[bond["atom_1"]]
         atom2_idx = atom_reindex_ter[bond["atom_2"]]
-        conect_line = f"CONECT{atom1_idx:>5}" + f"{atom2_idx:>5}"*max(bond["type"]%4,1)
+        conect_line = f"CONECT{atom1_idx:>5}" + f"{atom2_idx:>5}" * _conect_bond_order(bond)
         pdb_lines.append(f"{conect_line:<80}")
 
     pdb_lines.append(f"{'END':<80}")

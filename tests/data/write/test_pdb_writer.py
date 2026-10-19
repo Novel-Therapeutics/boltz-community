@@ -9,6 +9,7 @@ from boltz.data.types import (
     AtomV2,
     BondV2,
     Chain,
+    Connection,
     Coords,
     Ensemble,
     Interface,
@@ -183,3 +184,71 @@ class TestLigandResidueName:
 
         res_name = hetatm_lines[0][17:20].strip()
         assert res_name == "LIG"
+
+
+def _conect_lines(pdb_str):
+    return [l.rstrip() for l in pdb_str.split("\n") if l.startswith("CONECT")]
+
+
+class TestConectBondOrder:
+    """CONECT repeats a bonded partner to mark double and triple bonds (upstream #196)."""
+
+    def _ligand_with_bonds(self, bond_types):
+        """A ligand with one bond per type, each between atom 0 and atom i+1."""
+        n = len(bond_types) + 1
+        structure = _make_boltz2_ligand_structure(atom_name_str="C1", element=6)
+        atoms = np.zeros(n, dtype=AtomV2)
+        for i in range(n):
+            atoms[i]["name"] = f"C{i + 1}"
+            atoms[i]["element"] = 6
+            atoms[i]["coords"] = (float(i), 0.0, 0.0)
+            atoms[i]["is_present"] = True
+        bonds = np.zeros(len(bond_types), dtype=BondV2)
+        for i, bond_type in enumerate(bond_types):
+            bonds[i]["atom_1"] = 0
+            bonds[i]["atom_2"] = i + 1
+            bonds[i]["type"] = const.bond_type_ids[bond_type]
+        structure.residues[0]["atom_num"] = n
+        structure.chains[0]["atom_num"] = n
+        structure.ensemble[0]["atom_num"] = n
+        return StructureV2(
+            atoms=atoms,
+            bonds=bonds,
+            residues=structure.residues,
+            chains=structure.chains,
+            interfaces=structure.interfaces,
+            mask=structure.mask,
+            coords=np.array([(a["coords"],) for a in atoms], dtype=Coords),
+            ensemble=structure.ensemble,
+        )
+
+    def test_partner_repeated_by_bond_order(self):
+        structure = self._ligand_with_bonds(
+            ["SINGLE", "DOUBLE", "TRIPLE", "AROMATIC", "OTHER", "COVALENT"]
+        )
+        lines = _conect_lines(to_pdb(structure, boltz2=True))
+        assert lines == [
+            "CONECT    1    2",
+            "CONECT    1    3    3",
+            "CONECT    1    4    4    4",
+            "CONECT    1    5",
+            "CONECT    1    6",
+            "CONECT    1    7",
+        ]
+
+    def test_conect_lines_stay_80_columns(self):
+        structure = self._ligand_with_bonds(["TRIPLE"])
+        for line in to_pdb(structure, boltz2=True).split("\n"):
+            if line.startswith("CONECT"):
+                assert len(line) == 80
+
+    def test_boltz1_connections_without_bond_type_are_written_once(self, minimal_structure):
+        """Connection records have no type field; reading one must not crash."""
+        import dataclasses
+
+        connection = np.zeros(1, dtype=Connection)
+        connection[0]["atom_1"] = 0
+        connection[0]["atom_2"] = 5
+        structure = dataclasses.replace(minimal_structure, connections=connection)
+        lines = _conect_lines(to_pdb(structure))
+        assert lines[-1] == "CONECT    1    6"
