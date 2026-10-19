@@ -1,3 +1,4 @@
+import warnings
 from typing import Optional
 
 from rdkit import Chem
@@ -24,6 +25,40 @@ def _conect_bond_order(bond) -> int:
     if "type" not in (bond.dtype.names or ()):
         return 1
     return _CONECT_REPEATS.get(int(bond["type"]), 1)
+
+
+_PDB_CHAIN_ID_POOL = (
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+)
+
+
+def _pdb_chain_ids(names: list[str]) -> list[str]:
+    """Assign each chain, in order, a unique one-character PDB chain ID.
+
+    The PDB format has a single column for the chain ID, so a longer name such
+    as ``L1`` shifts every later column and corrupts the coordinates. Names that
+    are already one character and unique keep their ID; every other chain gets
+    the first unused character, in chain order. Raises ``ValueError`` when the
+    62 available IDs run out, since PDB cannot represent that many chains.
+    """
+    single = [n for n in names if len(n) == 1]
+    keep = {n for n in single if single.count(n) == 1}
+    pool = (c for c in _PDB_CHAIN_ID_POOL if c not in keep)
+    ids = []
+    for name in names:
+        if name in keep:
+            ids.append(name)
+            continue
+        try:
+            ids.append(next(pool))
+        except StopIteration:
+            msg = (
+                f"Cannot write {len(names)} chains to PDB, which allows at most "
+                f"{len(_PDB_CHAIN_ID_POOL)} one-character chain IDs. "
+                "Use --output_format mmcif instead."
+            )
+            raise ValueError(msg) from None
+    return ids
 
 
 def to_pdb(
@@ -61,10 +96,20 @@ def to_pdb(
     ligand_index_offset = 0
 
     # Add all atom sites.
-    for chain in structure.chains:
+    chain_names = [str(chain["name"]) for chain in structure.chains]
+    pdb_chain_ids = _pdb_chain_ids(chain_names)
+    renamed = [(n, c) for n, c in zip(chain_names, pdb_chain_ids) if n != c]
+    if renamed:
+        details = ", ".join(f"{n} -> {c}" for n, c in renamed)
+        warnings.warn(
+            "PDB chain IDs are one character, so these chains were renamed in "
+            f"the PDB output: {details}. mmCIF output keeps the original names.",
+            stacklevel=2,
+        )
+
+    for chain, chain_tag in zip(structure.chains, pdb_chain_ids):
         # We rename the chains in alphabetical order
         chain_idx = chain["asym_id"]
-        chain_tag = chain["name"]
 
         res_start = chain["res_idx"]
         res_end = chain["res_idx"] + chain["res_num"]

@@ -252,3 +252,70 @@ class TestConectBondOrder:
         structure = dataclasses.replace(minimal_structure, connections=connection)
         lines = _conect_lines(to_pdb(structure))
         assert lines[-1] == "CONECT    1    6"
+
+
+class TestPdbChainIds:
+    """PDB has one column for the chain ID; longer names used to shift columns.
+
+    Reported against upstream in jwohlwend/boltz#210.
+    """
+
+    def test_single_character_names_are_kept(self):
+        from boltz.data.write.pdb import _pdb_chain_ids
+
+        assert _pdb_chain_ids(["A", "B", "Z"]) == ["A", "B", "Z"]
+
+    def test_long_names_get_unused_characters_in_chain_order(self):
+        from boltz.data.write.pdb import _pdb_chain_ids
+
+        assert _pdb_chain_ids(["A", "L1", "B", "L2"]) == ["A", "C", "B", "D"]
+
+    def test_truncation_collisions_are_avoided(self):
+        """Truncating L1 and L2 would give both chains the ID L."""
+        from boltz.data.write.pdb import _pdb_chain_ids
+
+        ids = _pdb_chain_ids(["L1", "L2", "L"])
+        assert ids[2] == "L"
+        assert len(set(ids)) == 3
+
+    def test_duplicate_names_get_distinct_ids(self):
+        from boltz.data.write.pdb import _pdb_chain_ids
+
+        assert len(set(_pdb_chain_ids(["A", "A"]))) == 2
+
+    def test_too_many_chains_raises_clear_error(self):
+        from boltz.data.write.pdb import _pdb_chain_ids
+
+        with pytest.raises(ValueError, match="mmcif"):
+            _pdb_chain_ids([f"C{i}" for i in range(63)])
+
+    def test_multi_character_chain_keeps_columns_aligned(self, minimal_structure_with_ligand):
+        import dataclasses
+
+        chains = minimal_structure_with_ligand.chains.copy()
+        chains[0]["name"] = "P1"
+        chains[1]["name"] = "L1"
+        structure = dataclasses.replace(minimal_structure_with_ligand, chains=chains)
+
+        with pytest.warns(UserWarning, match="P1 -> A, L1 -> B"):
+            pdb_str = to_pdb(structure)
+
+        lines = [l for l in pdb_str.split("\n") if l.strip()]
+        assert all(len(l) == 80 for l in lines)
+
+        records = [l for l in lines if l.startswith(("ATOM", "HETATM"))]
+        assert {l[21] for l in records if l.startswith("ATOM")} == {"A"}
+        assert {l[21] for l in records if l.startswith("HETATM")} == {"B"}
+        for line, atom in zip(records, structure.atoms):
+            xyz = [float(line[30:38]), float(line[38:46]), float(line[46:54])]
+            assert xyz == pytest.approx(atom["coords"].tolist(), abs=1e-3)
+
+        ter = [l for l in lines if l.startswith("TER")]
+        assert [l[21] for l in ter] == ["A"]
+
+    def test_no_warning_when_names_already_fit(self, minimal_structure_with_ligand):
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            to_pdb(minimal_structure_with_ligand)
