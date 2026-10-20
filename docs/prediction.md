@@ -294,7 +294,7 @@ Both sets exclude padding and the diagonal. The unweighted values also exclude t
 
 **Structure checks (Boltz-2).** The confidence scores measure positional error, not stereochemistry, so a sample with an inverted stereocentre scores the same as a correct one. Each sample is therefore checked against the same chirality and bond constraints that `--use_potentials` enforces:
 
-- A stereocentre is *inverted* when its improper dihedral has the opposite sign to the input's configuration, and *flattened* when it is within 10° of planar. Real stereocentres sit at roughly 29–40°.
+- A stereocentre is *inverted* when its improper dihedral has the opposite sign to the input's configuration, and *flattened* when it is within 10° of planar, which is a dihedral of 0° or ±180°. Real stereocentres sit at roughly 29–40°. A stereocentre or bond whose geometry cannot be measured, because its atoms are collinear or its coordinates are not finite, counts as flattened or out of range.
 - A bond is *out of range* when its length is more than 25% outside its expected range. This catches bonds pulled apart (for example a ring C–C stretched to 2–3 Å), not ordinary strain.
 
 The checks cover ligands and modified residues, the parts that carry these constraints; standard amino acids and nucleotides are not checked. `structure_checks_passed` is `false` when any stereocentre is inverted or flattened, or any bond is out of range, and `boltz predict` prints how many written models failed. Failures are common without `--use_potentials` for molecules with stereocentres.

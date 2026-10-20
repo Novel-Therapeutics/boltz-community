@@ -136,3 +136,76 @@ def test_flat_threshold_is_well_below_ideal_centers():
         ref = feats["chiral_reference_mask"][0]
         phi = dihedral(coords, feats["chiral_atom_index"][0][:, ref])
         assert (phi.abs() > 2 * FLAT_DIHEDRAL).all()
+
+
+def _centre(degrees):
+    """One stereocentre whose improper dihedral, in the input's handedness, is
+    ``degrees``: atoms n1, n2, n3 and the centre, n2-n3 along the x axis."""
+    theta = np.radians(abs(degrees))
+    coords = torch.tensor(
+        [
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, float(np.cos(theta)), float(np.sin(theta))],
+        ]
+    )
+    index = torch.tensor([[0], [1], [2], [3]])
+    phi = dihedral(coords, index).item()
+    assert abs(abs(phi) - theta) < 1e-4
+    feats = {
+        "chiral_atom_index": index[None],
+        "chiral_reference_mask": torch.tensor([[True]]),
+        "chiral_atom_orientations": torch.tensor([[(phi > 0) == (degrees > 0)]]),
+    }
+    return coords, feats
+
+
+@pytest.mark.parametrize(
+    "degrees,inverted,flattened",
+    [
+        (35.0, 0, 0),
+        (-35.0, 1, 0),
+        (5.0, 0, 1),
+        (-5.0, 0, 1),
+        (178.69, 0, 1),  # planar the other way round; passed before
+        (-178.69, 0, 1),  # was counted as inverted
+        (150.0, 0, 0),
+        (-150.0, 1, 0),
+    ],
+)
+def test_both_planar_configurations_are_flattened(degrees, inverted, flattened):
+    coords, feats = _centre(degrees)
+    checks = check_structures(coords[None], feats, multiplicity=1)
+    assert checks["chiral_centers_inverted"].item() == inverted
+    assert checks["chiral_centers_flattened"].item() == flattened
+    assert passes_checks(checks).item() == (inverted == flattened == 0)
+
+
+def test_collinear_centre_fails():
+    """Collinear atoms give a NaN dihedral, which must not pass."""
+    coords, feats = _centre(35.0)
+    coords[3] = torch.tensor([2.0, 0.0, 0.0])  # on the n2-n3 line
+    assert torch.isnan(dihedral(coords, feats["chiral_atom_index"][0]))
+    checks = check_structures(coords[None], feats, multiplicity=1)
+    assert checks["chiral_centers_flattened"].item() == 1
+    assert not passes_checks(checks).item()
+
+
+def test_non_finite_coordinates_fail():
+    coords, feats, _, _ = _ligand(GLUCOSE)
+    broken = coords.clone()
+    broken[0] = float("nan")
+    checks = check_structures(broken[None], feats, multiplicity=1)
+    assert checks["bonds_out_of_range"].item() >= 1
+    assert not passes_checks(checks).item()
+
+
+def test_near_planar_centre_is_not_chosen_for_affinity():
+    """A 178.69-degree centre with higher ipTM used to win over a valid pose."""
+    flat, feats = _centre(178.69)
+    valid, _ = _centre(35.0)
+    checks = check_structures(torch.stack([flat, valid]), feats, multiplicity=2)
+    passed = passes_checks(checks)
+    assert passed.tolist() == [False, True]
+    assert select_affinity_sample(torch.tensor([0.9, 0.8]), passed) == 1

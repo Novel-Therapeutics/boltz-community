@@ -12,10 +12,11 @@ constraints exist for ligands and modified residues, not for standard residues.
 import torch
 
 # A stereocentre is "flattened" when its improper dihedral is within this many
-# radians (10 degrees) of planar. On ideal RDKit geometry the dihedral of real
-# stereocentres ranges from about 29 to 40 degrees, so the steering potential's
-# own 30-degree buffer is a target, not a correctness boundary: it would flag
-# ideal centres in glucose and steroids as flattened.
+# radians (10 degrees) of planar. Four coplanar atoms have a dihedral of 0 or
+# +/-180 degrees, so both are checked. On ideal RDKit geometry the dihedral of
+# real stereocentres ranges from about 29 to 40 degrees, so the steering
+# potential's own 30-degree buffer is a target, not a correctness boundary: it
+# would flag ideal centres in glucose and steroids as flattened.
 FLAT_DIHEDRAL = 0.17453
 
 # A bond is "out of range" when its length is more than this fraction outside
@@ -91,11 +92,18 @@ def check_structures(
                 is_r = feats["chiral_atom_orientations"][b][ref].bool()
                 phi = dihedral(x, index)
                 wanted = torch.where(is_r, phi, -phi)
+                # Collinear atoms or non-finite coordinates give a NaN dihedral,
+                # which no comparison catches; count it as flattened.
+                flat = (
+                    ~torch.isfinite(wanted)
+                    | (wanted.abs() < FLAT_DIHEDRAL)
+                    | (wanted.abs() > torch.pi - FLAT_DIHEDRAL)
+                )
                 out["chiral_centers_checked"][sample] = ref.sum()
-                out["chiral_centers_inverted"][sample] = (wanted <= -FLAT_DIHEDRAL).sum()
-                out["chiral_centers_flattened"][sample] = (
-                    wanted.abs() < FLAT_DIHEDRAL
+                out["chiral_centers_inverted"][sample] = (
+                    ~flat & (wanted < 0)
                 ).sum()
+                out["chiral_centers_flattened"][sample] = flat.sum()
 
         # Bonds only (not angles); padding is never a bond.
         if "rdkit_bounds_index" in feats:
@@ -109,8 +117,9 @@ def check_structures(
                 lower = feats["rdkit_lower_bounds"][b][bond] * (1 - BOND_TOLERANCE)
                 upper = feats["rdkit_upper_bounds"][b][bond] * (1 + BOND_TOLERANCE)
                 out["bonds_checked"][sample] = bond.sum()
+                # A NaN length fails both comparisons; count it as out of range.
                 out["bonds_out_of_range"][sample] = (
-                    (length < lower) | (length > upper)
+                    ~torch.isfinite(length) | (length < lower) | (length > upper)
                 ).sum()
 
     return out
