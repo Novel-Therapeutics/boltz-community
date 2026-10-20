@@ -2038,6 +2038,75 @@ def process_ensemble_features(
     return ensemble_features
 
 
+# Constraint features that hold atom indices, each with the per-constraint
+# features that must be filtered alongside it.
+_ATOM_INDEX_FEATURES = {
+    "rdkit_bounds_index": (
+        "rdkit_bounds_bond_mask",
+        "rdkit_bounds_angle_mask",
+        "rdkit_upper_bounds",
+        "rdkit_lower_bounds",
+    ),
+    "chiral_atom_index": ("chiral_reference_mask", "chiral_atom_orientations"),
+    "stereo_bond_index": ("stereo_reference_mask", "stereo_bond_orientations"),
+    "planar_bond_index": (),
+    "planar_ring_5_index": (),
+    "planar_ring_6_index": (),
+    "connected_atom_index": ("connected_chain_index",),
+    "contact_pair_index": (
+        "contact_union_index",
+        "contact_negation_mask",
+        "contact_thresholds",
+    ),
+}
+
+
+def remap_constraint_features(
+    data: Tokenized, features: dict[str, Tensor]
+) -> dict[str, Tensor]:
+    """Point constraint features at the featurized atoms after a crop.
+
+    Constraints are built with atom indices into the full structure, but the
+    atom features hold only the atoms of ``data.tokens``, in token order. After
+    a crop, such as the affinity crop, the two no longer agree: indices point at
+    the wrong atoms or past the end. This remaps each constraint to the
+    featurized atoms, drops constraints on atoms that were cropped out, and
+    drops chain pairs whose chains were cropped out entirely. Without a crop
+    every index maps to itself and nothing changes.
+    """
+    atom_map = torch.full((len(data.structure.atoms),), -1, dtype=torch.long)
+    offset = 0
+    for token in data.tokens:
+        start, num = int(token["atom_idx"]), int(token["atom_num"])
+        atom_map[start : start + num] = torch.arange(offset, offset + num)
+        offset += num
+
+    features = dict(features)
+    for key, companions in _ATOM_INDEX_FEATURES.items():
+        if key not in features:
+            continue
+        remapped = atom_map[features[key]]
+        keep = (remapped >= 0).all(dim=0)
+        features[key] = remapped[:, keep]
+        for companion in companions:
+            features[companion] = features[companion][..., keep]
+
+    if "contact_union_index" in features:
+        # Unions whose pairs were all dropped leave gaps; renumber.
+        union_index = features["contact_union_index"]
+        features["contact_union_index"] = torch.unique(
+            union_index, return_inverse=True
+        )[1].to(union_index.dtype)
+
+    if "symmetric_chain_index" in features:
+        present = torch.tensor(np.unique(data.tokens["asym_id"]), dtype=torch.long)
+        pairs = features["symmetric_chain_index"]
+        keep = torch.isin(pairs, present).all(dim=0)
+        features["symmetric_chain_index"] = pairs[:, keep]
+
+    return features
+
+
 def process_residue_constraint_features(data: Tokenized) -> dict[str, Tensor]:
     residue_constraints = data.residue_constraints
     if residue_constraints is not None:
@@ -2448,16 +2517,19 @@ class Boltz2Featurizer:
             symmetry_features = process_symmetry_features(data, symmetries)
 
         # Compute constraint features
-        residue_constraint_features = {}
-        chain_constraint_features = {}
-        contact_constraint_features = {}
+        constraint_features = {}
         if compute_constraint_features:
-            residue_constraint_features = process_residue_constraint_features(data)
-            chain_constraint_features = process_chain_feature_constraints(data)
-            contact_constraint_features = process_contact_feature_constraints(
-                data=data,
-                inference_pocket_constraints=inference_pocket_constraints if inference_pocket_constraints else [],
-                inference_contact_constraints=inference_contact_constraints if inference_contact_constraints else [],
+            constraint_features = remap_constraint_features(
+                data,
+                {
+                    **process_residue_constraint_features(data),
+                    **process_chain_feature_constraints(data),
+                    **process_contact_feature_constraints(
+                        data=data,
+                        inference_pocket_constraints=inference_pocket_constraints if inference_pocket_constraints else [],
+                        inference_contact_constraints=inference_contact_constraints if inference_contact_constraints else [],
+                    ),
+                },
             )
 
         return {
@@ -2468,8 +2540,6 @@ class Boltz2Featurizer:
             **template_features,
             **symmetry_features,
             **ensemble_features,
-            **residue_constraint_features,
-            **chain_constraint_features,
-            **contact_constraint_features,
+            **constraint_features,
             **ligand_to_mw,
         }
