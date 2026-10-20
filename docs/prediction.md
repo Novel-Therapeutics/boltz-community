@@ -146,7 +146,7 @@ Stereocentres, in ligands and in modified residues, are only enforced with `--us
 - With `--use_potentials`, every stereocentre came out correct, but 4 of 90 samples of rigid fused-ring molecules (morphine, a steroid) had a ring bond pulled apart instead. Sampling took 2.4 to 3 times as long.
 - Confidence scores do not reveal either problem.
 
-`boltz predict` prints a warning when an input has stereocentres and `--use_potentials` is off. Check the stereochemistry of predictions you rely on, especially for uncommon stereoisomers. The affinity step uses the predicted pose with the highest ipTM, so a wrong stereoisomer can also affect affinity.
+`boltz predict` prints a warning when an input has stereocentres and `--use_potentials` is off. Check the stereochemistry of predictions you rely on, especially for uncommon stereoisomers. The affinity step samples its own pose, which is steered only with `--use_potentials`, so without it the affinity can also be computed on a wrong stereoisomer.
 
 * To predict a structure using 10 recycling steps and 25 samples (the default parameters for AlphaFold3) use (note however that the prediction will take significantly longer): `--recycling_steps 10 --diffusion_samples 25`
 
