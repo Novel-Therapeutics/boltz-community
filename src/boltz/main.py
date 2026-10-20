@@ -145,6 +145,22 @@ def _resolve_affinity_max_parallel_samples(
     return min(max_parallel_samples, diffusion_samples_affinity)
 
 
+def _affinity_steering_args(use_potentials: bool) -> BoltzSteeringParams:
+    """Steering for the affinity pass, which samples its own pose.
+
+    Upstream always ran this pass unsteered, so with ``--use_potentials`` the
+    structure was steered but the affinity was computed on an unsteered pose,
+    which for chiral ligands is often the wrong stereoisomer. The affinity
+    pass now steers whenever the structure pass does. Contact guidance stays
+    off, as upstream had it.
+    """
+    steering_args = BoltzSteeringParams()
+    steering_args.fk_steering = use_potentials
+    steering_args.physical_guidance_update = use_potentials
+    steering_args.contact_guidance_update = False
+    return steering_args
+
+
 @dataclass
 class BoltzProcessedInput:
     """Processed input data."""
@@ -1859,10 +1875,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             affinity_checkpoint = cache / "boltz2_aff.ckpt"
         affinity_checkpoint = Path(affinity_checkpoint).expanduser()
 
-        steering_args = BoltzSteeringParams()
-        steering_args.fk_steering = False
-        steering_args.physical_guidance_update = False
-        steering_args.contact_guidance_update = False
+        steering_args = _affinity_steering_args(use_potentials)
 
         _validate_checkpoint_for_load(
             affinity_checkpoint, "Boltz-2 affinity weights"

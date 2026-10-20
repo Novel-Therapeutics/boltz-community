@@ -134,7 +134,7 @@ Examples of common options include:
 
 * Adding `--use_msa_server` flag, Boltz auto-generates the MSA using the mmseqs2 server. 
 
-* Adding the `--use_potentials` flag, Boltz uses an inference time potential that significantly improve the physical quality of the poses. 
+* Adding the `--use_potentials` flag, Boltz uses an inference time potential that significantly improve the physical quality of the poses. The potentials also steer the pose sampled for affinity prediction, so the affinity is computed on a pose with the requested stereochemistry; this makes the affinity step about 2.4x slower.
 
 * To predict a structure using 10 recycling steps and 25 samples (the default parameters for AlphaFold3) use (note however that the prediction will take significantly longer): `--recycling_steps 10 --diffusion_samples 25`
 

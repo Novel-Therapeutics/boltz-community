@@ -8,6 +8,7 @@ import click
 import pytest
 
 from boltz.main import (
+    _affinity_steering_args,
     _available_cpu_count,
     _resolve_affinity_max_parallel_samples,
     _validate_checkpoint_for_load,
@@ -401,3 +402,34 @@ class TestAffinityMaxParallelSamples:
             "max_parallel_samples=1; this regresses the affinity path to "
             "N sequential single-sample forward passes."
         )
+
+
+class TestAffinitySteering:
+    """The affinity pass samples its own pose, so it must steer whenever
+    --use_potentials asks for steering; otherwise the affinity of a chiral
+    ligand is often computed on the wrong stereoisomer."""
+
+    def test_steers_with_potentials(self):
+        args = _affinity_steering_args(use_potentials=True)
+        assert args.fk_steering is True
+        assert args.physical_guidance_update is True
+
+    def test_unsteered_without_potentials(self):
+        args = _affinity_steering_args(use_potentials=False)
+        assert args.fk_steering is False
+        assert args.physical_guidance_update is False
+
+    @pytest.mark.parametrize("use_potentials", [True, False])
+    def test_contact_guidance_stays_off(self, use_potentials):
+        args = _affinity_steering_args(use_potentials=use_potentials)
+        assert args.contact_guidance_update is False
+
+    def test_affinity_pass_uses_helper(self):
+        """Regression guard: the affinity pass must take its steering from
+        the helper, not hard-code it off as upstream does."""
+        import boltz.main as main_module
+
+        source = Path(main_module.__file__).read_text()
+        start = source.index("predict_affinity_args = {")
+        end = source.index("Boltz2.load_from_checkpoint(", start)
+        assert "_affinity_steering_args(use_potentials)" in source[start:end]
