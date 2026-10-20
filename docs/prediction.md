@@ -80,7 +80,7 @@ The `modifications` field is optional and allows specification of modified resid
 - `position`: index of the residue (starting from 1)  
 - `ccd`: CCD code of the modified residue (currently supported only for CCD ligands)  
 
-The `cyclic` flag indicates whether a polymer chain (not ligands) is cyclic.
+The `cyclic` flag indicates whether a polymer chain (not ligands) is cyclic. The model receives it as positional information; no bond is added to the input. mmCIF output records the head-to-tail closing bond (C–N for proteins, O3′–P for DNA and RNA) as a covalent `_struct_conn` entry; PDB output does not.
 
 ### Constraints
 
