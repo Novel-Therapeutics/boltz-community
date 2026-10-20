@@ -209,3 +209,11 @@ def test_steering_potentials_run_on_a_cropped_affinity_input(tmp_path):
         parameters = potential.compute_parameters(0.5)
         energy = potential.compute(sample, feats, parameters)
         assert torch.isfinite(energy).all(), type(potential).__name__
+
+    # The structure checks read the same features on the affinity pass.
+    from boltz.model.layers.structure_checks import check_structures
+
+    checks = check_structures(sample, feats, multiplicity=1)
+    num_centres = int(feats["chiral_reference_mask"][0].sum())
+    assert num_centres > 0
+    assert checks["chiral_centers_checked"].tolist() == [num_centres]

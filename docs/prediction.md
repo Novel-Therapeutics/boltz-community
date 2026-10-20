@@ -299,7 +299,7 @@ Both sets exclude padding and the diagonal. The unweighted values also exclude t
 
 The checks cover ligands and modified residues, the parts that carry these constraints; standard amino acids and nucleotides are not checked. `structure_checks_passed` is `false` when any stereocentre is inverted or flattened, or any bond is out of range, and `boltz predict` prints how many written models failed. Failures are common without `--use_potentials` for molecules with stereocentres.
 
-When predicting affinity, Boltz-2 computes it on the sample with the highest ipTM. That sample is now chosen among the samples that pass the checks, if any do; if all pass or none does, the choice is unchanged. `affinity_pose_passed_checks` in the affinity JSON says whether the pose used passed.
+When predicting affinity, Boltz-2 samples its own poses of the binding pocket (steered with `--use_potentials`) and computes the affinity on the sample with the highest ipTM. That sample is now chosen among the samples that pass the checks, if any do; if all pass or none does, the choice is unchanged. `affinity_pose_passed_checks` in the affinity JSON says whether the pose used passed.
 
 The output affinity `.json` file is organized as follows:
 ```yaml
