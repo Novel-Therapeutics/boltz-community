@@ -68,7 +68,7 @@ properties:
 The sequences section has one entry per unique chain or molecule.
 * Polymers: use `ENTITY_TYPE` equals to `protein`, `dna`, or `rna`, and provide a `sequence`.
 * Ligands (non-polymers): use `ENTITY_TYPE` equals `ligand`, and provide either a `smiles` string or a `ccd` code (but not both).
-* `CHAIN_ID`: unique identifier for each chain/molecule. If multiple identical entities exist, set id as a list (e.g. `[A, B]`).
+* `CHAIN_ID`: unique identifier for each chain/molecule, at most 5 characters. If multiple identical entities exist, set id as a list (e.g. `[A, B]`).
 
 For proteins:
 * By default, an `msa` must be provided.
