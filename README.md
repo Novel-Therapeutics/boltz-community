@@ -83,6 +83,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Added structure checks to Boltz-2's `confidence_*.json`: inverted or flattened stereocentres and out-of-range bonds per model. Affinity uses the best sample that passes ([#29](https://github.com/Novel-Therapeutics/boltz-community/pull/29))
 
 **Performance improvements:**
+- An experimental CUDA-graph denoiser prototype is available with `BOLTZ_DENOISER_GRAPH=on` (default `off`). See [scope, numerical checks and benchmark results](docs/denoiser-graph.md).
 - Optional denoiser conditioning reuse is available with `BOLTZ_DENOISER_CACHE=on` (default `off`). It caches fixed conditioning within one sampling call; see [scope, memory limits and validation](docs/denoiser-cache.md). Use `BOLTZ_DENOISER_CACHE=off` to disable it.
 - Triangle attention and triangle multiplication run on Anthropic's FlashPairformer kernels by default when [`opt_core`](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/main/common/opt_core) is installed, with the cuEquivariance and PyTorch paths as fallbacks (see [FlashPairformer kernels](#flashpairformer-kernels))
 - Added optional FlashAttention-2 / SDPA attention via `--flash_attn`: less memory and faster on Ampere+ GPUs, numerically equivalent ([#13](https://github.com/Novel-Therapeutics/boltz-community/pull/13))
