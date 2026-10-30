@@ -1,10 +1,11 @@
 # Denoiser invariant caching
 
-Eager Boltz-2 sampling reuses timestep-independent conditioning work within one
-`AtomDiffusion.sample` invocation. Automatic caching requires CUDA, eval mode,
-gradients disabled, and either fp32 execution or CUDA bf16 autocast. Compiled or
-custom score models retain their original call path. CPU, training, Boltz-1 and
-direct denoiser calls do not automatically create a cache.
+With `BOLTZ_DENOISER_CACHE=on`, eager Boltz-2 sampling reuses
+timestep-independent conditioning work within one `AtomDiffusion.sample`
+invocation. When enabled, caching requires CUDA, eval mode, gradients disabled,
+and either fp32 execution or CUDA bf16 autocast. Compiled or custom score models
+retain their original call path. CPU, training, Boltz-1 and direct denoiser
+calls do not automatically create a cache.
 
 The regular Boltz-2 CLI disables autocast around sampling, so its denoiser runs
 in fp32 even when the trunk uses bf16. The bf16 cache path supports direct

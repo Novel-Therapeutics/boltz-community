@@ -87,7 +87,7 @@ def mask_counts(raw_mask: Tensor, mask: Tensor) -> Tensor:
             id(raw_mask),
             version,
             raw_mask.data_ptr(),
-            tuple(raw_mask.shape),
+            raw_mask.shape,
             raw_mask.stride(),
             mask.dtype,
             mask.device,

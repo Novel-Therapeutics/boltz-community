@@ -53,7 +53,7 @@ def _tensor_key(tensor):
     return (
         tensor.data_ptr(),
         version,
-        tuple(tensor.shape),
+        tensor.shape,
         tensor.stride(),
         tensor.dtype,
         tensor.device,
@@ -188,7 +188,7 @@ class SamplingCache:
             "_inference_cache": self,
         }
 
-    def get(self, role, inputs, modules, build, extra=()):
+    def get(self, role, inputs, modules, build):
         """Reuse only versioned inputs/weights in the same precision and shape."""
         if torch.compiler.is_compiling():
             return build()
@@ -212,7 +212,6 @@ class SamplingCache:
         signature = (
             plan,
             keys,
-            extra,
             autocast,
             torch.get_autocast_dtype(device) if autocast else None,
             torch.get_float32_matmul_precision(),
@@ -284,7 +283,7 @@ class SamplingCache:
             return torch.sigmoid(module.s_scale(normalized)), module.s_bias(normalized)
 
         return self.get(
-            ("adaln", module, tuple(conditioning.shape)),
+            ("adaln", module, conditioning.shape),
             (conditioning,),
             (module,),
             build,
@@ -292,7 +291,7 @@ class SamplingCache:
 
     def gate(self, module, conditioning):
         return self.get(
-            ("gate", module, tuple(conditioning.shape)),
+            ("gate", module, conditioning.shape),
             (conditioning,),
             (module,),
             lambda: module(conditioning),

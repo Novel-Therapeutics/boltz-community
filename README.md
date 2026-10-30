@@ -83,9 +83,10 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Added structure checks to Boltz-2's `confidence_*.json`: inverted or flattened stereocentres and out-of-range bonds per model. Affinity uses the best sample that passes ([#29](https://github.com/Novel-Therapeutics/boltz-community/pull/29))
 
 **Performance improvements:**
-- An experimental CUDA-graph denoiser prototype is available with `BOLTZ_DENOISER_GRAPH=on` (default `off`). See [scope, numerical checks and benchmark results](docs/denoiser-graph.md).
-- Optional denoiser conditioning reuse is available with `BOLTZ_DENOISER_CACHE=on` (default `off`). It caches fixed conditioning within one sampling call; see [scope, memory limits and validation](docs/denoiser-cache.md). Use `BOLTZ_DENOISER_CACHE=off` to disable it.
-- Triangle attention and triangle multiplication run on Anthropic's FlashPairformer kernels by default when [`opt_core`](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/main/common/opt_core) is installed, with the cuEquivariance and PyTorch paths as fallbacks (see [FlashPairformer kernels](#flashpairformer-kernels))
+- Added an experimental CUDA-graph denoiser: `BOLTZ_DENOISER_GRAPH=on` (off by default). See [scope, numerical checks and benchmarks](docs/denoiser-graph.md)
+- Reused activation casts and mask counts in Boltz-2 MSA inference, and released chunked OPM buffers earlier. Initial A10G layer benchmarks saved 13–50%; whole-prediction gain is unmeasured ([#34](https://github.com/Novel-Therapeutics/boltz-community/pull/34), [details](docs/msa-inference.md))
+- Added opt-in denoiser conditioning reuse: `BOLTZ_DENOISER_CACHE=on` (off by default). A10G predictions took 0.19–0.65% less time with identical outputs and scores ([#35](https://github.com/Novel-Therapeutics/boltz-community/pull/35), [details](docs/denoiser-cache.md))
+- Added Anthropic's FlashPairformer triangle kernels for Boltz-2 CUDA bf16 inference when `opt_core` is installed, with cuEquivariance/PyTorch fallbacks ([#33](https://github.com/Novel-Therapeutics/boltz-community/pull/33), [setup](#flashpairformer-kernels), thanks to [@MichalMalyska](https://github.com/MichalMalyska))
 - Added optional FlashAttention-2 / SDPA attention via `--flash_attn`: less memory and faster on Ampere+ GPUs, numerically equivalent ([#13](https://github.com/Novel-Therapeutics/boltz-community/pull/13))
 - Checkpoints are staged on CPU before moving to the accelerator: ~1.75 s faster warm load and ~4.4 GiB less peak VRAM, for ~1 GiB more host RAM ([#16](https://github.com/Novel-Therapeutics/boltz-community/pull/16), thanks to [@corinwagen](https://github.com/corinwagen))
 - Cached molecule file reads and symmetry deserialization across samples ([b2d9e06](https://github.com/Novel-Therapeutics/boltz-community/commit/b2d9e06))
@@ -95,7 +96,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - `process_atom_features` pre-allocates its arrays and fills `atom_to_token` per token, not per atom ([ba3f6cf](https://github.com/Novel-Therapeutics/boltz-community/commit/ba3f6cf))
 
 **Tests & CI:**
-- 362 tests vs. 5 in upstream `jwohlwend/boltz`: unit, end-to-end smoke, golden-output regression (Boltz-1 and Boltz-2) and determinism tests
+- 538 test cases: unit, end-to-end smoke, golden-output regression (Boltz-1 and Boltz-2), determinism and CUDA kernel/cache parity
 - GitHub Actions CI with CPU runners (every push/PR) and GPU T4 runners (push to main)
 
 ## Contributors
@@ -114,6 +115,7 @@ Thanks to everyone whose code, upstream PRs or reports are in this fork:
 - [@alexcritschristoph](https://github.com/alexcritschristoph) and [@jsilter](https://github.com/jsilter): chain id length
 - [@Michaelihc](https://github.com/Michaelihc): affinity-to-ΔG documentation
 - [@TSC2412](https://github.com/TSC2412): cyclic D-peptide stereochemistry report
+- [@MichalMalyska](https://github.com/MichalMalyska): FlashPairformer integration and H100 native-path validation
 
 ## Contributing
 
@@ -152,7 +154,7 @@ git -C uplifting-biomolecular-modeling checkout f4f62fa6592ae4938d49b1757bea0cfe
 pip install -e uplifting-biomolecular-modeling/common/opt_core
 ```
 
-The adapter's API checks and A10G validation used `opt_core` 0.5.228.0 at commit [`f4f62fa6592ae4938d49b1757bea0cfeff9f468e`](https://github.com/anthropics/uplifting-biomolecular-modeling/commit/f4f62fa6592ae4938d49b1757bea0cfeff9f468e), pinned above. Native shared-cache invalidation still requires GPU validation on compute capability 9.0 (H100, H200 or GH200); the A10G results do not cover it. If installing another revision, run `TestOptCoreInterface` in `tests/model/layers/test_flashpairformer.py` to check the required APIs, including `trimul.native.shared_geometries()` and `payload_cache()`.
+Validation used `opt_core` 0.5.228.0 at commit [`f4f62fa6592ae4938d49b1757bea0cfeff9f468e`](https://github.com/anthropics/uplifting-biomolecular-modeling/commit/f4f62fa6592ae4938d49b1757bea0cfeff9f468e), pinned above. [H100 validation](https://github.com/Novel-Therapeutics/boltz-community/pull/33#issuecomment-6431821434) passed 23 CUDA tests and 3 interface checks, including native weight-update invalidation, plus a 384-token prediction using both native directions. For other revisions, run `TestOptCoreInterface` in `tests/model/layers/test_flashpairformer.py` to check the required APIs, including `trimul.native.shared_geometries()` and `payload_cache()`.
 
 When `opt_core` is importable, `boltz predict` uses it by default on NVIDIA GPUs with compute capability 8.0 or newer (A100, H100, and later). For each call, `opt_core` picks the kernel it measured fastest for the GPU and input size. Any call it cannot serve (an unsupported GPU or shape, a missing prebuilt binary, a kernel error) runs on cuEquivariance, and without cuEquivariance on PyTorch, as before. A kernel error disables FlashPairformer for the rest of the process with a warning.
 

@@ -77,6 +77,7 @@ class OuterProductMean(nn.Module):
                 a_chunk = a_cast[:, :, :, i : i + chunk_size]
                 if a_was_cast:
                     # Match autocast's contiguous cast of each original slice.
+                    # bf16 inputs reuse work without casting; keep their layout.
                     a_chunk = a_chunk.contiguous()
                 sliced_weight_proj_o = self.proj_o.weight[
                     :, i * self.c_hidden : (i + chunk_size) * self.c_hidden
