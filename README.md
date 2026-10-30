@@ -83,6 +83,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Added structure checks to Boltz-2's `confidence_*.json`: inverted or flattened stereocentres and out-of-range bonds per model. Affinity uses the best sample that passes ([#29](https://github.com/Novel-Therapeutics/boltz-community/pull/29))
 
 **Performance improvements:**
+- Added an experimental CUDA-graph denoiser: `BOLTZ_DENOISER_GRAPH=on` (off by default). See [scope, numerical checks and benchmarks](docs/denoiser-graph.md)
 - Reused activation casts and mask counts in Boltz-2 MSA inference, and released chunked OPM buffers earlier. Initial A10G layer benchmarks saved 13–50%; whole-prediction gain is unmeasured ([#34](https://github.com/Novel-Therapeutics/boltz-community/pull/34), [details](docs/msa-inference.md))
 - Added opt-in denoiser conditioning reuse: `BOLTZ_DENOISER_CACHE=on` (off by default). A10G predictions took 0.19–0.65% less time with identical outputs and scores ([#35](https://github.com/Novel-Therapeutics/boltz-community/pull/35), [details](docs/denoiser-cache.md))
 - Added Anthropic's FlashPairformer triangle kernels for Boltz-2 CUDA bf16 inference when `opt_core` is installed, with cuEquivariance/PyTorch fallbacks ([#33](https://github.com/Novel-Therapeutics/boltz-community/pull/33), [setup](#flashpairformer-kernels), thanks to [@MichalMalyska](https://github.com/MichalMalyska))

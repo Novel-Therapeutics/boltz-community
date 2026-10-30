@@ -1436,11 +1436,16 @@ def predict(  # noqa: C901, PLR0915, PLR0912
 ) -> None:
     """Run predictions with Boltz."""
     from boltz.model.layers.denoiser_inference import cache_enabled
+    from boltz.model.layers.denoiser_graph import graph_enabled
 
     try:
         cache_enabled()
     except ValueError as error:
         raise click.BadParameter(str(error), param_hint="BOLTZ_DENOISER_CACHE") from error
+    try:
+        graph_enabled()
+    except ValueError as error:
+        raise click.BadParameter(str(error), param_hint="BOLTZ_DENOISER_GRAPH") from error
 
     import torch
     from pytorch_lightning import Trainer, seed_everything
