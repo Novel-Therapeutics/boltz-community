@@ -5,6 +5,7 @@ from torch import Tensor, nn
 
 from boltz.data import const
 from boltz.model.layers.attentionv2 import AttentionPairBias
+from boltz.model.layers import fused_inference
 from boltz.model.layers.dropout import get_dropout_mask
 from boltz.model.layers.transition import Transition
 from boltz.model.layers.triangular_attention.attention import (
@@ -187,6 +188,9 @@ class PairformerModule(nn.Module):
             Whether to use PyTorch SDPA (FlashAttention-2) backend.
 
         """
+        fused = fused_inference.pair_stack(self, z, pair_mask, use_kernels, s=s, mask=mask, use_flash_attn=use_flash_attn)
+        if fused is not None:
+            return fused
         if not self.training:
             if z.shape[1] > const.chunk_size_threshold:
                 chunk_size_tri_attn = 128
@@ -256,6 +260,9 @@ class PairformerNoSeqLayer(nn.Module):
         use_flash_attn: bool = False,
     ) -> Tensor:
         # Compute pairwise stack
+        fused = fused_inference.pair_stack(self, z, pair_mask, use_kernels)
+        if fused is not None:
+            return fused
         dropout = get_dropout_mask(self.dropout, z, self.training)
         z = z + dropout * self.tri_mul_out(
             z, mask=pair_mask, use_kernels=use_cuequiv_mul or use_kernels
@@ -328,6 +335,9 @@ class PairformerNoSeqModule(nn.Module):
         use_kernels: bool = False,
         use_flash_attn: bool = False,
     ) -> Tensor:
+        fused = fused_inference.pair_stack(self, z, pair_mask, use_kernels)
+        if fused is not None:
+            return fused
         if not self.training:
             if z.shape[1] > const.chunk_size_threshold:
                 chunk_size_tri_attn = 128

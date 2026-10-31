@@ -35,7 +35,9 @@ class TestSubsampleMsaDefault:
             if param.name == "subsample_msa":
                 assert param.is_flag, "subsample_msa should be a flag"
                 # Click 8.x uses secondary_opts (list); Click 7.x uses secondary (bool)
-                secondary = getattr(param, "secondary_opts", None) or getattr(param, "secondary", None)
+                secondary = getattr(param, "secondary_opts", None) or getattr(
+                    param, "secondary", None
+                )
                 assert secondary, (
                     "subsample_msa should be a boolean flag pair "
                     "(--subsample_msa/--no_subsample_msa)"
@@ -82,20 +84,21 @@ class TestBatchSizeOption:
 
 
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
+@pytest.mark.parametrize("setting", ["BOLTZ_DENOISER_CACHE", "BOLTZ_FUSED_INFERENCE"])
 def test_bad_denoiser_setting_rejected_before_prediction_setup(
-    tmp_path, monkeypatch, accelerator
+    tmp_path, monkeypatch, accelerator, setting
 ):
     from click.testing import CliRunner
 
     input_path = tmp_path / "input.yaml"
     input_path.write_text("version: 1\nsequences: []\n")
-    monkeypatch.setenv("BOLTZ_DENOISER_CACHE", "typo")
+    monkeypatch.setenv(setting, "typo")
     with patch("boltz.main.download_boltz2") as download:
         result = CliRunner().invoke(
             predict, [str(input_path), "--accelerator", accelerator]
         )
     assert result.exit_code == 2
-    assert "BOLTZ_DENOISER_CACHE" in result.output
+    assert setting in result.output
     download.assert_not_called()
 
 
@@ -158,12 +161,15 @@ class TestDownloadBoltz2:
         (tmp_path / "boltz2_conf.ckpt").write_text("fake")
         (tmp_path / "boltz2_aff.ckpt").write_text("fake")
 
-        with patch("boltz.main._download") as mock_download, \
-             patch("tarfile.open") as mock_tarfile:
+        with (
+            patch("boltz.main._download") as mock_download,
+            patch("tarfile.open") as mock_tarfile,
+        ):
             mock_tar = mock_tarfile.return_value.__enter__.return_value
 
             def fake_extractall(path):
                 (path / "mols").mkdir(exist_ok=True)
+
             mock_tar.extractall.side_effect = fake_extractall
 
             download_boltz2(tmp_path)
@@ -295,6 +301,7 @@ class TestProcessInputSkipBadInputs:
     def _import(self):
         try:
             from boltz.main import process_input
+
             self.process_input = process_input
         except ImportError as e:
             pytest.skip(f"Cannot import boltz.main: {e}")

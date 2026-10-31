@@ -137,3 +137,6 @@ markers = [
     "xpu: requires an Intel GPU with PyTorch XPU (run manually with '-m xpu')",
     "cuda: requires an NVIDIA GPU with opt_core and cuequivariance (run manually with '-m cuda')",
 ]
+
+[tool.setuptools.package-data]
+"boltz.model.layers._anthropic" = ["LICENSE", "NOTICE", "PROVENANCE.json"]

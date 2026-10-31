@@ -1,0 +1,47 @@
+{
+  "atom_kernels.py": {
+    "upstream": "boltz2/opt/forward/atom/src/boltz_atom_kernels.py",
+    "pin": "f4f62fa6592ae4938d49b1757bea0cfeff9f468e",
+    "original_sha256": "dd2e7bb05c26b05b23e9c47cbef690910e20726ac9d7250b0edaa640d05cba58",
+    "changes": []
+  },
+  "atom.py": {
+    "upstream": "boltz2/opt/forward/atom/src/boltz_atom.py",
+    "pin": "f4f62fa6592ae4938d49b1757bea0cfeff9f468e",
+    "original_sha256": "27109b07debd9c2ac4058694a600847688627e54e0c994b0b4f735270d9b50ff",
+    "changes": [
+      "Use package-relative kernel import; no numerical changes."
+    ]
+  },
+  "dit.py": {
+    "upstream": "boltz2/opt/forward/sampler/src/bz_sampler_dit.py",
+    "pin": "f4f62fa6592ae4938d49b1757bea0cfeff9f468e",
+    "original_sha256": "60fa9333035e2ca8c7ff7b97356c1cef706a76ede352fc6a6c77844f374ef738",
+    "changes": []
+  },
+  "pair.py": {
+    "upstream": "boltz2/opt/forward/pairfuse/bz_pairfuse.py",
+    "pin": "f4f62fa6592ae4938d49b1757bea0cfeff9f468e",
+    "original_sha256": "2cb48ce327a43a853131e6b67fb0dd4a5f29ce281d896d04e1a84f3f84ce7dd2",
+    "changes": [
+      "Use standalone canonical weight mappings/core binding; installation hooks are never called. Fork integration calls the fused driver functionally.",
+      "Device-explicit autocast query."
+    ]
+  },
+  "weights.py": {
+    "upstream": [
+      "boltz2/opt/boltz2_opt/trimul.py",
+      "boltz2/opt/boltz2_opt/transition.py",
+      "boltz2/opt/boltz2_opt/pairblock.py"
+    ],
+    "pin": "f4f62fa6592ae4938d49b1757bea0cfeff9f468e",
+    "original_sha256": {
+      "boltz2/opt/boltz2_opt/trimul.py": "d22fd6238b91c807890cf085747a37560a960169c50b3727268282e082b00e47",
+      "boltz2/opt/boltz2_opt/transition.py": "38bcc2859152cb078d57091ae7175772594ec57a5d934d72bfe00a77157ee444",
+      "boltz2/opt/boltz2_opt/pairblock.py": "0e2cd0c15d7a7cacd8e9b74e364d473201f3364c429ffaac87ad7fb9283efa3a"
+    },
+    "changes": [
+      "Extract and rename canonical weights_of mappings; bind the triangle-attention provider functionally without installing class or instance forward patches."
+    ]
+  }
+}
