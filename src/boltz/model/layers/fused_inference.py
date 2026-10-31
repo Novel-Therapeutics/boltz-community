@@ -19,6 +19,8 @@ _PAIR = contextvars.ContextVar("boltz_fused_pair", default=None)
 _DENOISER = contextvars.ContextVar("boltz_fused_denoiser", default=None)
 _LOCK = threading.RLock()
 _LAST = {}
+_LOGGED = set()
+_LOG_LOCK = threading.Lock()
 _PAIR_ATTRS = (
     "_pairfuse_elig",
     "_pairfuse_w",
@@ -56,29 +58,63 @@ def _runtime_supported():
     return tuple(int(x) for x in version[:2]) >= (2, 12)
 
 
-def _safe(module, tensor):
+def _notice(component, reason=None):
+    """Log each requested component's refusal or first actual use once."""
+    key = (component, reason)
+    with _LOG_LOCK:
+        if key in _LOGGED:
+            return
+        _LOGGED.add(key)
+    if reason is None:
+        logger.info("Fused inference %s: using fused kernels", component)
+    else:
+        logger.warning(
+            "Fused inference %s declined: %s; using original path", component, reason
+        )
+
+
+def _decline(parts, reason):
+    for part in parts:
+        _notice(part, reason)
+
+
+def _unsafe_reason(module, tensor):
     if torch.compiler.is_compiling():
-        return False
-    if module.training or torch.is_grad_enabled() or not tensor.is_cuda:
-        return False
-    if not _runtime_supported() or torch.get_default_dtype() != torch.float32:
-        return False
+        return "compiling"
+    if module.training:
+        return "training"
+    if torch.is_grad_enabled():
+        return "gradients_enabled"
+    if not tensor.is_cuda:
+        return "not_cuda"
+    if not _runtime_supported():
+        return "requires_torch_2.12"
+    if torch.get_default_dtype() != torch.float32:
+        return "default_dtype_not_fp32"
     if tensor.device != torch.device("cuda", torch.cuda.current_device()):
-        return False
+        return "noncurrent_cuda_device"
     for child in module.modules():
-        if child.training or child._forward_hooks or child._forward_pre_hooks:
-            return False
-        if hasattr(child, "_orig_mod") or "forward" in child.__dict__:
-            return False
+        if child.training:
+            return "training_submodule"
+        if child._forward_hooks or child._forward_pre_hooks:
+            return "forward_hooks"
+        if hasattr(child, "_orig_mod"):
+            return "compiled_module"
+        if "forward" in child.__dict__:
+            return "custom_forward"
         if not type(child).__module__.startswith(
             ("torch.", "boltz.", "einops.layers.", "torchmetrics.")
         ):
-            return False
+            return "custom_module"
         if not getattr(type(child).forward, "__module__", "").startswith(
             ("torch.", "boltz.", "einops.layers.", "torchmetrics.")
         ):
-            return False
-    return True
+            return "custom_forward"
+    return None
+
+
+def _safe(module, tensor):
+    return _unsafe_reason(module, tensor) is None
 
 
 def _versioned_weights(module):
@@ -106,13 +142,20 @@ def forward_scope(function):
         if "pair" not in components():
             return function(module, feats, *args, **kwargs)
         tensor = feats["token_pad_mask"]
-        if (
-            not _safe(module, tensor)
-            or not torch.is_autocast_enabled("cuda")
+        reason = None
+        if not _safe(module, tensor):
+            reason = _unsafe_reason(module, tensor) or "unsafe_context"
+        elif (
+            not torch.is_autocast_enabled("cuda")
             or torch.get_autocast_dtype("cuda") != torch.bfloat16
-            or not _versioned_weights(module)
-            or not _LOCK.acquire(blocking=False)
         ):
+            reason = "requires_cuda_bf16_autocast"
+        elif not _versioned_weights(module):
+            reason = "unversioned_weights"
+        elif not _LOCK.acquire(blocking=False):
+            reason = "lock_contention"
+        if reason is not None:
+            _notice("pair", reason)
             return function(module, feats, *args, **kwargs)
         backend = scope = token = None
         saved = []
@@ -123,7 +166,8 @@ def forward_scope(function):
                 for m in module.modules()
             ]
             residency, picks = backend.parse_word(
-                "bf16,trimul=core.fast,triatt=core.fast,transition=core.fast"
+                "bf16,trimul=core.fast,triatt=core.fast,transition=core.fast",
+                environ={},
             )
             backend._STATE.update(residency=residency, picks=picks, handed_triatt={})
             scope = PairScope(backend)
@@ -171,6 +215,7 @@ def pair_stack(
     reason = backend._stack_word(layers[0], z, use_kernels, module.training)
     if reason is not None:
         scope.fallbacks[reason] = scope.fallbacks.get(reason, 0) + 1
+        _notice("pair", reason)
         return None
     zr = backend._enter(z)
     ctx = backend._make_ctx(zr, pair_mask)
@@ -185,18 +230,30 @@ def pair_stack(
                 projection = backend.FusedProjZ(attention.proj_z)
                 scope.projections[id(attention)] = projection
             bias = projection(zr)
-            with torch.autocast("cuda", enabled=False):
-                normed = layer.pre_norm_s(s.float())
-                s = s.float() + attention(
+            if use_flash_attn:
+                normed = layer.pre_norm_s(s)
+                s = s + attention(
                     s=normed,
                     z=zr,
-                    mask=mask.float(),
+                    mask=mask,
                     k_in=normed,
-                    use_flash_attn=use_flash_attn,
-                    precomputed_bias=bias,
+                    use_flash_attn=True,
+                    precomputed_bias=bias.to(zr.dtype),
                 )
                 s = layer.s_post_norm(s + layer.transition_s(s))
+            else:
+                with torch.autocast(s.device.type, enabled=False):
+                    normed = layer.pre_norm_s(s.float())
+                    s = s.float() + attention(
+                        s=normed,
+                        z=zr,
+                        mask=mask.float(),
+                        k_in=normed,
+                        precomputed_bias=bias.float(),
+                    )
+                    s = layer.s_post_norm(s + layer.transition_s(s))
     scope.calls += 1
+    _notice("pair")
     out = backend._exit(zr, z)
     return out if s is None else (s, out)
 
@@ -234,7 +291,9 @@ def _geometry_unchecked(net, cond):
         and enc.atom_encoder.attn_window_queries == 32
         and enc.atom_encoder.attn_window_keys == 128
         and all(
-            layer.pair_bias_attn.num_heads == 4 and layer.pair_bias_attn.head_dim == 32
+            layer.pair_bias_attn.num_heads == 4
+            and layer.pair_bias_attn.head_dim == 32
+            and isinstance(layer.post_lnorm, torch.nn.Identity)
             for layer in list(enc.atom_encoder.diffusion_transformer.layers)
             + list(dec.atom_decoder.diffusion_transformer.layers)
         )
@@ -248,27 +307,53 @@ def _geometry(net, cond):
         return False
 
 
+def _packing_estimate(net, atom_mask, parts, chunk, n):
+    estimate = 1024**3
+    if "dit" in parts:
+        estimate += 2 * len(net.token_transformer.layers) * 16 * n * n
+    return estimate + chunk * (n * 768 * 24 * 16 + atom_mask.shape[1] * 128 * 64)
+
+
+def _memory_headroom(device):
+    free, _ = torch.cuda.mem_get_info(device)
+    reclaimable = torch.cuda.memory_reserved(device) - torch.cuda.memory_allocated(
+        device
+    )
+    return free + max(0, reclaimable)
+
+
 def sampling_scope(function):
     @functools.wraps(function)
     def scoped(module, atom_mask, *args, **kwargs):
         requested = components()
         parts = tuple(x for x in requested if x in ("dit", "atom"))
-        if not parts or not _safe(module, atom_mask):
+        if not parts:
+            return function(module, atom_mask, *args, **kwargs)
+        if not _safe(module, atom_mask):
+            _decline(parts, _unsafe_reason(module, atom_mask) or "unsafe_context")
             return function(module, atom_mask, *args, **kwargs)
         from boltz.model.modules.diffusionv2 import DiffusionModule
         from . import denoiser_inference
 
         cond = kwargs.get("diffusion_conditioning")
         net = module.score_model
-        if (
-            type(net) is not DiffusionModule
-            or torch.is_autocast_enabled("cuda")
-            or torch.get_float32_matmul_precision() != "highest"
-            or denoiser_inference.cache_enabled()
-            or not _versioned_weights(net)
-            or not _geometry(net, cond)
-            or not _LOCK.acquire(blocking=False)
-        ):
+        reason = None
+        if type(net) is not DiffusionModule:
+            reason = "custom_score_model"
+        elif torch.is_autocast_enabled("cuda"):
+            reason = "requires_autocast_off"
+        elif torch.get_float32_matmul_precision() != "highest":
+            reason = "requires_highest_matmul_precision"
+        elif denoiser_inference.cache_enabled():
+            reason = "denoiser_cache_enabled"
+        elif not _versioned_weights(net):
+            reason = "unversioned_weights"
+        elif not _geometry(net, cond):
+            reason = "unsupported_geometry"
+        elif not _LOCK.acquire(blocking=False):
+            reason = "lock_contention"
+        if reason is not None:
+            _decline(parts, reason)
             return function(module, atom_mask, *args, **kwargs)
         scope = DenoiserScope(net)
         attrs = []
@@ -283,11 +368,9 @@ def sampling_scope(function):
             chunk = min(count, cap)
             # Conservative admission before any pack; OOM during computation
             # still propagates. No replay or retry of a scientific attempt.
-            estimate = 2 * len(net.token_transformer.layers) * 16 * n * n + 1024**3
-            estimate += chunk * (n * 768 * 24 * 16 + atom_mask.shape[1] * 128 * 64)
-            free, _ = torch.cuda.mem_get_info(atom_mask.device)
-            if estimate + 2 * 1024**3 > free:
-                logger.warning("Fused denoiser declined: insufficient packing headroom")
+            estimate = _packing_estimate(net, atom_mask, parts, chunk, n)
+            if estimate + 2 * 1024**3 > _memory_headroom(atom_mask.device):
+                _decline(parts, "insufficient_packing_headroom")
                 return function(module, atom_mask, *args, **kwargs)
             if "atom" in parts:
                 assignment = kwargs["feats"]["atom_to_token"]
@@ -295,16 +378,13 @@ def sampling_scope(function):
                     assignment.sum(-1) <= 1
                 ).all()
                 if not bool(onehot):
-                    logger.warning(
-                        "Fused atom inference declined: atom_to_token is not one-hot-or-empty"
-                    )
+                    _decline(parts, "atom_to_token_not_onehot_or_empty")
                     return function(module, atom_mask, *args, **kwargs)
             if "dit" in parts:
                 dit = _load_kernels("dit")
                 scope.dit = dit
-                dit.install(["bf16", "weights=sample"])
+                dit.configure(["bf16", "weights=sample"])
                 dit.prepare(net, kwargs["feats"], cond, chunk)
-                scope.dit = dit
             if "atom" in parts:
                 atom = _load_kernels("atom")
                 atom.new_epoch()
@@ -355,10 +435,12 @@ def atom_encoder(
         return None
     if module is not scope.net.atom_attention_encoder:
         return None
-    scope.calls["encoder"] += 1
-    return scope.atom._encoder_fused(
+    result = scope.atom._encoder_fused(
         module, feats, q, c, bias, to_keys, r=r, multiplicity=multiplicity
     )
+    scope.calls["encoder"] += 1
+    _notice("atom")
+    return result
 
 
 def atom_decoder(
@@ -376,10 +458,12 @@ def atom_decoder(
         return None
     if module is not scope.net.atom_attention_decoder:
         return None
-    scope.calls["decoder"] += 1
-    return scope.atom._decoder_fused(
+    result = scope.atom._decoder_fused(
         module, a, q, c, bias, feats, to_keys, multiplicity=multiplicity
     )
+    scope.calls["decoder"] += 1
+    _notice("atom")
+    return result
 
 
 def token_transformer(
@@ -396,9 +480,10 @@ def token_transformer(
     ):
         return None
     if module is not scope.net.token_transformer or to_keys is not None or bias is None:
+        _notice("dit", "not_token_attention")
         return None
-    # The upstream fallback calls the class forward. Our class forward contains
-    # this functional hook, so decline here before it could recursively re-enter.
+    # Validate the functional backend contract here so unsupported inputs use
+    # the original caller path, without invoking or re-entering class forward.
     state = scope.dit._STATE
     packed = state["st"] if state["tt"] is module else None
     if (
@@ -410,11 +495,14 @@ def token_transformer(
         or packed.pack["N"] != a.shape[1]
         or packed.D != a.shape[-1]
     ):
+        _notice("dit", "missing_or_incompatible_pack")
         return None
-    scope.calls["dit"] += 1
-    return scope.dit.fused_forward(
+    result = scope.dit.fused_forward(
         module, a, s, bias=bias, mask=mask, to_keys=to_keys, multiplicity=multiplicity
     )
+    scope.calls["dit"] += 1
+    _notice("dit")
+    return result
 
 
 def report():

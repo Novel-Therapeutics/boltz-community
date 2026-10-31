@@ -10,14 +10,17 @@
     "pin": "f4f62fa6592ae4938d49b1757bea0cfeff9f468e",
     "original_sha256": "27109b07debd9c2ac4058694a600847688627e54e0c994b0b4f735270d9b50ff",
     "changes": [
-      "Use package-relative kernel import; no numerical changes."
+      "Use package-relative kernel import; no numerical changes.",
+      "Remove unused glue/keys paths, patch installers and sample wrappers; retain fused kernels and invocation state. Simplify refresh to the fused-only path."
     ]
   },
   "dit.py": {
     "upstream": "boltz2/opt/forward/sampler/src/bz_sampler_dit.py",
     "pin": "f4f62fa6592ae4938d49b1757bea0cfeff9f468e",
     "original_sha256": "60fa9333035e2ca8c7ff7b97356c1cef706a76ede352fc6a6c77844f374ef738",
-    "changes": []
+    "changes": [
+      "Remove instance patch installer and class-forward fallbacks; configure is a pure kernel setup function. An invalid internal invocation raises instead of recursively falling back. Replace upstream lever documentation with functional entry points."
+    ]
   },
   "pair.py": {
     "upstream": "boltz2/opt/forward/pairfuse/bz_pairfuse.py",
@@ -25,7 +28,9 @@
     "original_sha256": "2cb48ce327a43a853131e6b67fb0dd4a5f29ce281d896d04e1a84f3f84ce7dd2",
     "changes": [
       "Use standalone canonical weight mappings/core binding; installation hooks are never called. Fork integration calls the fused driver functionally.",
-      "Device-explicit autocast query."
+      "Device-explicit autocast query.",
+      "Remove upstream patch installers, class forwards, graph/registry diagnostics and stale lever documentation; retain functional kernels and admission helpers.",
+      "Fix unnamed ImportError handling in provider admission."
     ]
   },
   "weights.py": {

@@ -1,28 +1,10 @@
-"""bz_sampler_dit.py — the `dit_fused` lever (FAST tier, precision class): the diffusion module's
-24-layer token transformer (boltz.model.modules.transformersv2.DiffusionTransformer, the `token_transformer` instance of DiffusionModule) as a
-fused bf16 tensor-core step (per layer: AdaLN -> attention with pair bias (16 heads x 48) gated by sigmoid(g) and by an s-conditioned
-output gate -> conditioned SwiGLU transition, in Boltz-2's SwiGLU order: silu(second half) * first half).
+"""Pinned Anthropic fused token transformer kernels.
 
-Dataflow per denoiser step (M = multiplicity x tokens rows; D = 768; H = 16, HD = 48; HID = 1536; L = 24 layers):
-  conditioning of ALL layers from 2 GEMMs:  CS = LN0(s) @ Wcs^T  [M, L*4D]  (per layer: adaln scale | adaln bias | transition-adaln scale | bias; the
-                                             s_norm weight of each AdaLN folded into the
-                                             columns),  OG = s @ Wog^T  [M, L*2D] (the two output gates, pre-sigmoid)
-  per layer:  qkvg = xin @ Wqkvg^T (bf16 [M,4D]; q's bias added in the attention prologue)
-              ctx  = flash attention with pair bias (Triton; bias bf16 [H,N,N] per layer with the key mask folded in once per sample(); online softmax
-                     in base 2 with fp32 statistics; QK^T and PV on bf16 tensor cores (word attn=bf16) or tf32 (attn=tf32); * sigmoid(g) in the epilogue)
-              o    = ctx @ Wo^T (fp32 out);  x, xin = [x + sigmoid(OG_a) * o ; transition AdaLN of the new x]  (one Triton kernel, fp32 residual stream)
-              tri  = xin @ [Wswish | Wa_to_b]^T (bf16 [M, 3*HID]);  h = silu(tri[:, HID:2HID]) * tri[:, :HID] * tri[:, 2HID:]  (one kernel)
-              o    = h @ Wb_to_a^T (fp32 out);  x, xin = [x + sigmoid(OG_t) * o ; the NEXT layer's AdaLN]  (one kernel)
-  10 launches per layer (stock: ~45), GEMM inputs bf16 with fp32 accumulation (cuBLAS), residual stream and all LayerNorm / softmax statistics fp32.
-Words (BOLTZ_SAMPLER_DIT=<word>[,<word>]): `weights=resident|sample` = the packed weights' lifetime (resident from the first sample() on — the
-roll-out reads them in its captured step — or built at each sample() entry and dropped at its exit: the memory row, nothing resident outside
-sample()). Precision words: `bf16` = gemm=bf16 + attn=bf16 (the lever); `gemm=tf32` / `attn=tf32` = the same dataflow with
-TF32 tensor-core products on fp32 data (a higher-precision variant of the same dataflow). Tolerance class: outputs differ from stock (bf16
-products) — never bitwise; compare against stock's seed-to-seed band.
-
-Scope by name: the token transformer instance only (to_keys is None, pair bias present, B == 1 pair batch); anything else is served by the stock
-forward and counted (`scope=<reason>`). The per-sample() pair-bias pack (bf16 [L,H,N,N] + key mask) is prepared by bz_sampler's sample() entry
-(prepare()); a forward that finds no prepared pack for its shapes falls back to stock by name (`no_pack`).
+Functional entry points: configure, prepare, fused_forward and release.
+The fork adapter validates scope and pack geometry before fused_forward;
+violating that internal contract raises instead of re-entering class forward.
+No instance/class patches or upstream BOLTZ_SAMPLER_DIT switch are installed.
+See PROVENANCE.json for the source pin, original hashes and modifications.
 """
 from __future__ import annotations
 
@@ -347,7 +329,7 @@ def prepare(score_model, feats, diffusion_conditioning, multiplicity):
 
 
 def release():
-    """sample() exit (bz_sampler): drop the per-sample() pair-bias pack; under weights=sample drop the packed weights too (the next prepare() rebuilds them)."""
+    """Invocation exit: drop the per-sample() pair-bias pack; under weights=sample drop the packed weights too (the next prepare() rebuilds them)."""
     st = _STATE["st"]
     if st is not None:
         st.pack = None
@@ -365,22 +347,15 @@ def _state_for(tt):
     return _STATE["st"]
 
 
-def _scope(reason, tt, args, kwargs):
-    STATS["scope"][reason] = STATS["scope"].get(reason, 0) + 1
-    return tt.__class__.forward(tt, *args, **kwargs)
-
 
 def fused_forward(tt, a, s, bias=None, mask=None, to_keys=None, multiplicity=1):
     """DiffusionTransformer.forward for the token instance: 24 fused layers (module doc). Same signature/return as stock."""
     STATS["calls"] += 1
-    if not _CFG["on"]:
-        return _scope("off", tt, (a, s), dict(bias=bias, mask=mask, to_keys=to_keys, multiplicity=multiplicity))
-    if to_keys is not None or not tt.pair_bias_attn or bias is None:
-        return _scope("not_token_attention", tt, (a, s), dict(bias=bias, mask=mask, to_keys=to_keys, multiplicity=multiplicity))
     st = _STATE["st"] if _STATE["tt"] is tt else None
     Bm, N, D = a.shape
-    if st is None or st.pack is None or st.pack["N"] != N or D != st.D:
-        return _scope("no_pack", tt, (a, s), dict(bias=bias, mask=mask, to_keys=to_keys, multiplicity=multiplicity))
+    if (not _CFG["on"] or to_keys is not None or not tt.pair_bias_attn or bias is None
+            or st is None or st.pack is None or st.pack["N"] != N or D != st.D):
+        raise RuntimeError("Fused token transformer called without an admitted, compatible pack")
     gp, ap = _CFG["gemm"], _CFG["attn"]
     gin = torch.bfloat16 if gp == "bf16" else torch.float32
     M = Bm * N
@@ -433,9 +408,8 @@ def fused_forward(tt, a, s, bias=None, mask=None, to_keys=None, multiplicity=1):
     return x.view(Bm, N, D).to(a.dtype)
 
 
-def install(words, score_model_cls=None):
-    """words: list like ['bf16'] or ['bf16', 'attn=tf32', 'gemm=tf32']. Installs nothing on modules yet: the token-transformer INSTANCE is patched at
-    the first sample() (bz_sampler calls attach(score_model)), so class-level patches by other levers (the kit hoist) never displace it."""
+def configure(words):
+    """Configure kernel precision and weight lifetime; never patch a module."""
     if not _HAVE_TRITON:
         raise RuntimeError("dit_fused: triton is not importable in this process")
     gemm, attn, attn_given, weights = "bf16", "bf16", False, "resident"
@@ -482,21 +456,6 @@ def _has_out_dtype():
     except Exception:  # noqa: BLE001
         return False
 
-
-def attach(score_model):
-    """Patch the token transformer INSTANCE of this DiffusionModule (idempotent)."""
-    if not _CFG["on"]:
-        return False
-    tt = score_model.token_transformer
-    if getattr(tt, "_bzs_dit", False):
-        return True
-    if _CFG["weights"] == "resident":
-        _state_for(tt)                                       # weights=sample: prepare() builds the pack at sample() entry, release() drops it at exit
-    import types
-    tt.forward = types.MethodType(fused_forward, tt)
-    tt._bzs_dit = True
-    _log("attached fused forward to", type(tt).__name__, "layers:", len(tt.layers))
-    return True
 
 
 def report():

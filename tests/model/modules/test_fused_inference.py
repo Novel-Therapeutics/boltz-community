@@ -79,7 +79,7 @@ def test_pair_scope_restores_attrs_context_and_lock_on_error(monkeypatch, fail_s
         _STATE={}, _MASK_PRED=[], _MASK_GIVEN={"value": None}, _CORE_TRIMUL_CACHE={}
     )
 
-    def parse(word):
+    def parse(word, environ):
         if fail_setup:
             raise RuntimeError("setup failure")
         return "bf16", {}
@@ -113,7 +113,7 @@ def test_failed_dit_pack_releases_partial_state(monkeypatch):
         raise RuntimeError("pack failure")
 
     backend = SimpleNamespace(
-        install=lambda *a: None,
+        configure=lambda *a: None,
         prepare=bad_prepare,
         release=lambda: released.append(True),
     )
@@ -122,7 +122,7 @@ def test_failed_dit_pack_releases_partial_state(monkeypatch):
     monkeypatch.setattr(fused, "_safe", lambda m, t: True)
     monkeypatch.setattr(fused, "_geometry", lambda *a: True)
     monkeypatch.setattr(fused, "_load_kernels", lambda name: backend)
-    monkeypatch.setattr(torch.cuda, "mem_get_info", lambda *a: (1024**4, 1024**4))
+    monkeypatch.setattr(fused, "_memory_headroom", lambda *a: 1024**4)
     with torch.no_grad(), pytest.raises(RuntimeError, match="pack failure"):
         sampler.sample(mask, **kwargs)
     assert released == [True] and fused._DENOISER.get() is None and _lock_free()
@@ -259,8 +259,10 @@ def test_precomputed_pair_bias_matches_original_projection(sdpa):
     reason="CUDA and Torch2.12+",
 )
 @pytest.mark.parametrize("tokens", [128, 846, 1380])
+@pytest.mark.parametrize("sdpa", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 def test_real_pair_kernels_preserve_rng_input_and_registered_modules(
-    monkeypatch, tokens
+    monkeypatch, tokens, sdpa, dtype
 ):
     from boltz.model.layers.pairformer import PairformerModule
 
@@ -274,7 +276,7 @@ def test_real_pair_kernels_preserve_rng_input_and_registered_modules(
         @fused.forward_scope
         def forward(self, feats, s, z, mask, pair_mask):
             return self.pair(
-                s, z, mask, pair_mask, use_kernels=True, use_flash_attn=True
+                s, z, mask, pair_mask, use_kernels=True, use_flash_attn=sdpa
             )
 
     original_safe = fused._safe
@@ -290,7 +292,7 @@ def test_real_pair_kernels_preserve_rng_input_and_registered_modules(
                     m.weight.fill_(1)
                 if m.bias is not None:
                     m.bias.zero_()
-    s = torch.randn(1, tokens, 32, device="cuda")
+    s = torch.randn(1, tokens, 32, device="cuda").to(dtype)
     z = torch.randn(1, tokens, tokens, 128, device="cuda")
     original_z = z.clone()
     mask = torch.ones(1, tokens, device="cuda")
@@ -298,6 +300,15 @@ def test_real_pair_kernels_preserve_rng_input_and_registered_modules(
     pm = mask[:, :, None] * mask[:, None, :]
     feats = {"token_pad_mask": mask}
     module_ids = {n: id(m) for n, m in model.named_modules()}
+    observed = []
+    original_sdpa = torch.nn.functional.scaled_dot_product_attention
+
+    def sdpa_probe(q, k, v, **kwargs):
+        if q.shape[-1] == 8:  # Sequence track, not triangle attention.
+            observed.append((q.dtype, kwargs["attn_mask"].dtype))
+        return original_sdpa(q, k, v, **kwargs)
+
+    monkeypatch.setattr(torch.nn.functional, "scaled_dot_product_attention", sdpa_probe)
     monkeypatch.setenv("BOLTZ_FUSED_INFERENCE", "off")
     with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
         cpu = torch.get_rng_state()
@@ -316,6 +327,8 @@ def test_real_pair_kernels_preserve_rng_input_and_registered_modules(
     for a, b in zip(actual, expected):
         assert torch.isfinite(a).all()
         torch.testing.assert_close(a, b, rtol=0.03, atol=0.03)
+    assert actual[0].dtype == expected[0].dtype
+    assert observed == ([(torch.bfloat16, torch.bfloat16)] * 2 if sdpa else [])
     assert torch.equal(original_z, z)
     assert module_ids == {n: id(m) for n, m in model.named_modules()}
     assert fused.report()["pair"]["served_stacks"] == 1
@@ -383,3 +396,313 @@ def test_token_decline_does_not_reenter_class_forward(reason):
         assert scope.calls["dit"] == 0
     finally:
         fused._DENOISER.reset(token)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_fused_logs(monkeypatch):
+    monkeypatch.setattr(fused, "_LOGGED", set())
+
+
+@pytest.mark.parametrize("sdpa", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_pair_sequence_branch_matches_stock_under_autocast(monkeypatch, sdpa, dtype):
+    """Isolate sequence logic: pair update is zero and projection is unfused."""
+    from boltz.model.layers.pairformer import PairformerLayer
+
+    class Zero(torch.nn.Module):
+        def forward(self, z, **kwargs):
+            return torch.zeros_like(z)
+
+    layer = PairformerLayer(16, 8, num_heads=4, post_layer_norm=True).eval()
+    for name in (
+        "tri_mul_out",
+        "tri_mul_in",
+        "tri_att_start",
+        "tri_att_end",
+        "transition_z",
+    ):
+        setattr(layer, name, Zero())
+    with torch.no_grad():
+        for p in layer.parameters():
+            p.normal_(std=0.1)
+    s = torch.randn(1, 5, 16).to(dtype)
+    z = torch.randn(1, 5, 5, 8).bfloat16()
+    mask = torch.ones(1, 5).bfloat16()
+    mask[:, -1] = 0
+    pair_mask = mask[:, :, None] * mask[:, None, :]
+    observed = []
+    original_sdpa = torch.nn.functional.scaled_dot_product_attention
+
+    def sdpa_probe(q, k, v, **kwargs):
+        observed.append((q.dtype, kwargs["attn_mask"].dtype))
+        return original_sdpa(q, k, v, **kwargs)
+
+    monkeypatch.setattr(torch.nn.functional, "scaled_dot_product_attention", sdpa_probe)
+
+    # The fused projection returns fp32; stock Linear returns bf16 under autocast.
+    def projection(original):
+        def call(z):
+            with torch.autocast("cpu", enabled=sdpa, dtype=torch.bfloat16):
+                return original(z.float()).float()
+
+        return call
+
+    backend = SimpleNamespace(
+        _stack_word=lambda *a: None,
+        _enter=lambda z: z,
+        _make_ctx=lambda *a: None,
+        _pair_sublayers=lambda layer, z, ctx: z,
+        _exit=lambda z, like: z,
+        FusedProjZ=projection,
+    )
+    scope = fused.PairScope(backend)
+    with torch.no_grad(), torch.autocast("cpu", dtype=torch.bfloat16):
+        expected = layer(s, z, mask, pair_mask, use_flash_attn=sdpa)
+        token = fused._PAIR.set(scope)
+        try:
+            actual = fused.pair_stack(layer, z, pair_mask, True, s, mask, sdpa)
+        finally:
+            fused._PAIR.reset(token)
+    assert actual[0].dtype == expected[0].dtype
+    torch.testing.assert_close(actual[0], expected[0], rtol=0, atol=0)
+    if sdpa:
+        assert observed == [(torch.bfloat16, torch.bfloat16)] * 2
+
+
+def test_memory_headroom_includes_reusable_allocator_reservation(monkeypatch):
+    device = torch.device("cuda", 1)
+    seen = []
+
+    def on_device(value):
+        def read(dev):
+            seen.append(dev)
+            return value
+
+        return read
+
+    monkeypatch.setattr(
+        torch.cuda, "mem_get_info", on_device((3 * 1024**3, 24 * 1024**3))
+    )
+    monkeypatch.setattr(torch.cuda, "memory_reserved", on_device(7 * 1024**3))
+    monkeypatch.setattr(torch.cuda, "memory_allocated", on_device(2 * 1024**3))
+    assert fused._memory_headroom(device) == 8 * 1024**3
+    assert seen == [device] * 3
+
+
+def test_atom_only_admission_does_not_budget_unused_token_bias():
+    net = SimpleNamespace(token_transformer=SimpleNamespace(layers=[None] * 24))
+    mask = torch.empty(1, 8000)
+    atom = fused._packing_estimate(net, mask, ("atom",), 5, 1380)
+    both = fused._packing_estimate(net, mask, ("dit", "atom"), 5, 1380)
+    assert both - atom == 2 * 24 * 16 * 1380**2
+    assert atom > 1024**3
+
+
+@pytest.mark.parametrize("part", ["encoder", "decoder"])
+@pytest.mark.parametrize("index", [0, 1, 2])
+def test_atom_post_layer_norm_declines(part, index):
+    def layers():
+        return [
+            SimpleNamespace(
+                pair_bias_attn=SimpleNamespace(num_heads=4, head_dim=32),
+                post_lnorm=torch.nn.Identity(),
+            )
+            for _ in range(3)
+        ]
+
+    enc_layers, dec_layers = layers(), layers()
+    net = SimpleNamespace(
+        token_transformer=SimpleNamespace(
+            layers=[
+                SimpleNamespace(
+                    adaln=SimpleNamespace(
+                        a_norm=SimpleNamespace(normalized_shape=(768,))
+                    ),
+                    pair_bias_attn=SimpleNamespace(num_heads=16, head_dim=48),
+                )
+            ]
+        ),
+        atom_attention_encoder=SimpleNamespace(
+            structure_prediction=True,
+            r_to_q_trans=SimpleNamespace(weight=torch.empty(128, 3)),
+            atom_encoder=SimpleNamespace(
+                diffusion_transformer=SimpleNamespace(layers=enc_layers),
+                attn_window_queries=32,
+                attn_window_keys=128,
+            ),
+        ),
+        atom_attention_decoder=SimpleNamespace(
+            atom_decoder=SimpleNamespace(
+                diffusion_transformer=SimpleNamespace(layers=dec_layers)
+            ),
+            atom_feat_to_atom_pos_update=torch.nn.Sequential(),
+        ),
+    )
+    cond = {"token_trans_bias": torch.empty(1, 3, 3, 32)}
+    assert fused._geometry(net, cond)
+    (enc_layers if part == "encoder" else dec_layers)[
+        index
+    ].post_lnorm = torch.nn.LayerNorm(128)
+    assert not fused._geometry(net, cond)
+
+
+def test_provider_unnamed_import_error_declines(monkeypatch):
+    import builtins
+    from boltz.model.layers._anthropic import pair
+
+    original_import = builtins.__import__
+
+    def unavailable(name, *args, **kwargs):
+        if name.startswith("opt_core"):
+            raise ImportError("provider installation is broken")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", unavailable)
+    monkeypatch.setitem(pair._STATE, "residency", "bf16")
+    assert pair._probe_sites(None, torch.empty(1, 2, 2, 128)) == "import:import"
+
+
+def test_declines_warn_once_per_component_reason_and_use_logs_info(caplog):
+    with caplog.at_level("INFO", logger=fused.__name__):
+        for _ in range(2):
+            fused._decline(("dit", "atom"), "unsupported_geometry")
+            fused._notice("pair", "import:opt_core")
+            fused._notice("pair", "below_min_tokens")
+            fused._notice("pair")
+    assert len(caplog.records) == 5
+    assert [r.levelname for r in caplog.records].count("WARNING") == 4
+    assert [r.levelname for r in caplog.records].count("INFO") == 1
+
+
+@pytest.mark.parametrize("reason", ["autocast", "weights", "lock"])
+def test_pair_scope_decline_logs_and_preserves_original(monkeypatch, caplog, reason):
+    class Busy:
+        def acquire(self, blocking):
+            return False
+
+    monkeypatch.setenv("BOLTZ_FUSED_INFERENCE", "pair")
+    monkeypatch.setattr(fused, "_safe", lambda *a: True)
+    monkeypatch.setattr(torch, "is_autocast_enabled", lambda *a: reason != "autocast")
+    monkeypatch.setattr(torch, "get_autocast_dtype", lambda *a: torch.bfloat16)
+    monkeypatch.setattr(fused, "_versioned_weights", lambda *a: reason != "weights")
+    if reason == "lock":
+        monkeypatch.setattr(fused, "_LOCK", Busy())
+    monkeypatch.setattr(
+        fused, "_load_kernels", lambda *a: pytest.fail("Must decline before import")
+    )
+
+    @fused.forward_scope
+    def original(self, feats):
+        return "original"
+
+    for _ in range(2):
+        assert original(None, {"token_pad_mask": torch.ones(1)}) == "original"
+    assert len(caplog.records) == 1 and "declined" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "autocast",
+        "precision",
+        "cache",
+        "geometry",
+        "weights",
+        "lock",
+        "memory",
+        "onehot",
+    ],
+)
+def test_sampling_declines_are_observable_without_packing(monkeypatch, caplog, reason):
+    from .test_denoiser_inference import _case
+
+    sampler, mask, kwargs = _case("cpu")
+    if reason == "onehot":
+        kwargs["feats"]["atom_to_token"][0, 0, 0] = 0.5
+    monkeypatch.setenv("BOLTZ_FUSED_INFERENCE", "denoiser")
+    monkeypatch.setenv("BOLTZ_DENOISER_CACHE", "on" if reason == "cache" else "off")
+    monkeypatch.setattr(fused, "_safe", lambda *a: True)
+    monkeypatch.setattr(torch, "is_autocast_enabled", lambda *a: reason == "autocast")
+    monkeypatch.setattr(
+        torch,
+        "get_float32_matmul_precision",
+        lambda: "high" if reason == "precision" else "highest",
+    )
+    monkeypatch.setattr(fused, "_geometry", lambda *a: reason != "geometry")
+    monkeypatch.setattr(fused, "_versioned_weights", lambda *a: reason != "weights")
+    monkeypatch.setattr(
+        fused, "_memory_headroom", lambda *a: 0 if reason == "memory" else 1024**4
+    )
+    monkeypatch.setattr(
+        fused, "_load_kernels", lambda *a: pytest.fail("Must decline before import")
+    )
+    if reason == "lock":
+        monkeypatch.setattr(fused, "_LOCK", SimpleNamespace(acquire=lambda **kw: False))
+
+    @fused.sampling_scope
+    def original(self, atom_mask, **kwargs):
+        return "original"
+
+    with torch.no_grad():
+        for _ in range(2):
+            assert original(sampler, mask, **kwargs) == "original"
+    assert len(caplog.records) == 2
+    assert "dit declined" in caplog.text and "atom declined" in caplog.text
+
+
+def test_vendor_module_exports_no_patch_installers():
+    from boltz.model.layers._anthropic import atom, dit, pair
+
+    for module in (atom, dit, pair):
+        for name in ("apply", "remove", "install", "uninstall", "attach"):
+            assert not hasattr(module, name)
+    assert not hasattr(dit, "_scope")
+
+
+@pytest.mark.parametrize(
+    "reason", ["requires_torch_2.12", "forward_hooks", "compiled_module"]
+)
+def test_safe_context_refusal_reports_specific_reason(monkeypatch, caplog, reason):
+    module = torch.nn.Linear(2, 2).eval()
+    fake_cuda = SimpleNamespace(is_cuda=True, device=torch.device("cuda", 0))
+    monkeypatch.setattr(torch.cuda, "current_device", lambda: 0)
+    monkeypatch.setattr(
+        fused, "_runtime_supported", lambda: reason != "requires_torch_2.12"
+    )
+    monkeypatch.setenv("BOLTZ_FUSED_INFERENCE", "pair")
+    if reason == "forward_hooks":
+        module.register_forward_hook(lambda *args: None)
+    if reason == "compiled_module":
+        module._orig_mod = object()
+
+    @fused.forward_scope
+    def original(self, feats):
+        return "original"
+
+    with torch.no_grad():
+        assert original(module, {"token_pad_mask": fake_cuda}) == "original"
+    assert reason in caplog.text
+
+
+def test_pair_provider_refusal_is_reported_and_counted(caplog):
+    module = torch.nn.Linear(2, 2).eval()
+    scope = fused.PairScope(SimpleNamespace(_stack_word=lambda *a: "import:opt_core"))
+    token = fused._PAIR.set(scope)
+    try:
+        with torch.no_grad():
+            for _ in range(2):
+                assert fused.pair_stack(module, None, None, True) is None
+    finally:
+        fused._PAIR.reset(token)
+    assert scope.fallbacks == {"import:opt_core": 2}
+    assert len(caplog.records) == 1 and "import:opt_core" in caplog.text
+
+
+def test_vendor_token_contract_never_reenters_class_forward():
+    from boltz.model.layers._anthropic import dit
+
+    # No configured state or pack: reject before a kernel or class method call.
+    with pytest.raises(RuntimeError, match="admitted, compatible pack"):
+        dit.fused_forward(
+            SimpleNamespace(pair_bias_attn=True), torch.empty(1, 3, 8), None
+        )

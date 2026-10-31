@@ -22,16 +22,23 @@ The token kernel serves width 768 / 16 heads of width 48; the atom kernels serve
 three encoder plus three decoder layers of width 128, four heads of width 32,
 and 32-query/128-key windows. Atom assignment must be one-hot-or-empty. The
 independent conditioning cache must be off for fused denoising. Packing is
-admitted against free GPU memory; errors after admission propagate, without a
-silent scientific retry. Model weights and conditioning must stay fixed during
+admitted against driver-free GPU memory plus unused PyTorch allocator reservation.
+Errors after admission propagate, without a silent scientific retry. Model weights and conditioning must stay fixed during
 one inference invocation; packs are rebuilt for the next invocation.
 
 The fork's sampler, corrected chunking, guidance, particle resampling, random
 draws and alignment remain in place. Pairformer sequence attention preserves
-the fork's SDPA choice; the opt-in fused denoiser uses the upstream Triton
+the fork's SDPA choice and precision branch: native bf16 autocast with
+`--flash_attn`, and fp32 with autocast disabled otherwise; the opt-in fused denoiser uses the upstream Triton
 attention kernels. Functional pair bias routing avoids replacing registered model modules. Context and packed
 values are released in `finally`; provider-native payload caches are cleared
 when the pair scope closes. No global class-forward patches are installed.
+
+Requested components log a warning once per process for each decline reason,
+including unsupported runtime/geometry, custom or compiled forwards, hooks,
+missing providers, cache conflicts and insufficient memory. Their first actual
+kernel use logs once at info level. Small/C=64 pair stacks can decline while
+larger stacks in the same prediction use fusion.
 
 The graph prototype from PR #36 was also tested with the fusions. It preserved
 predictions but did not improve the selected workloads, so this branch carries
@@ -41,6 +48,14 @@ steps aside under potentials, whereas the fork's existing guidance loop is
 preserved here.
 
 ## Evaluation protocol
+
+**Historical measurements:** the timings, prediction differences and CUDA results
+below describe PR head `9951e80`, before review corrections. That source forced
+the Pairformer sequence track to fp32 even with `--flash_attn`; it changed both
+the sequence precision and the fused pair operations. The current source restores
+the stock sequence precision branch. Pair-containing modes need new full-model
+timings and score/pose comparisons; the historical results are not validation of
+the corrected source. The underlying denoiser kernels are unchanged.
 
 Measured on 30 October 2026 (Eastern), RTX PRO 6000 Blackwell Workstation 96 GB
 (cc 12.0), driver 580.65.06, PyTorch 2.12.0+cu130, Triton 3.7.0 and
@@ -66,7 +81,7 @@ the short/ligand inputs and 101 for the guided input. The ligand uses at most
 1,024 MSA rows; the guided input uses at most 64. Input/receipt identities and
 full numeric comparisons are in [the machine-readable report](benchmarks/fused-inference-blackwell.json).
 
-## Selected port
+## Selected port and pre-review measurements
 
 The final source contains eager resident-pair fusion and fused token/atom
 encoder/decoder kernels, and defaults to **off**. Select `pair`, `dit` or
@@ -122,9 +137,11 @@ rounding can lead to a different guided trajectory and selected pose even with
 the same final RNG state. A higher model confidence or binding score does not
 establish better experimental accuracy.
 
-The deliberate changes include bf16 operands in the originally fp32 denoiser,
-bf16 storage of the pair residual stream, and fused operations with different
-rounding/reduction order. These explain loss of bit identity. Amplification
+The current deliberate changes include bf16 operands in the originally fp32
+denoiser, bf16 storage of the pair residual stream, and fused operations with
+different rounding/reduction order. The historical pair-mode comparisons below
+also include the unintended fp32 sequence track under `--flash_attn`, which has
+now been corrected. These explain loss of bit identity. Amplification
 through 200 diffusion steps and guided particle selection is a plausible
 explanation for the large pose change; the first divergent operation and the
 contribution of each change have not been traced. No multi-seed accuracy band
@@ -145,13 +162,11 @@ The denoiser-only ablation instead scores
 0.20178
 and has 8.33 Å target-aligned binder RMSD. These are distinct predictions,
 not interchangeable evaluations of a candidate. One guided target/seed does
-not establish an accuracy or seed-variation band. **Do not switch ongoing
-Novel/FoldCraft populations on the strength of these timings.** A future
-adoption needs an explicit predictor/scoring evidence version and broader
-scientific validation.
+not establish an accuracy or seed-variation band. Adoption needs an explicit
+predictor/scoring evidence version and broader scientific validation.
 
-All final repetitions are internally bit-identical, preserve the control's final
-CPU/CUDA RNG state, and match the previous ablation's raw output hashes. The
+All pre-review final repetitions are internally bit-identical, preserve the
+control's final CPU/CUDA RNG state, and match the previous ablation's raw output hashes. The
 final hardening and removal of graph plumbing did not change these outputs.
 
 ## Complete upstream fast configuration
@@ -203,13 +218,24 @@ The three selected fusions have actual served-kernel counters in every admitted
 benchmark. Pair fusion deliberately steps aside below its minimum token count
 and on the C=64 template track; the short case's gain comes from denoising.
 
-Final validation: 496 CPU tests passed on the minimum PyTorch 2.4.1 runtime
+Pre-review validation: 496 CPU tests passed on the minimum PyTorch 2.4.1 runtime
 (62 skipped, 11 deselected). Five CUDA tests passed on the measured Blackwell
 runtime, with nonzero model parameters, uneven chunks, padding, output
 comparisons, RNG checks, scope/error cleanup, input immutability and stable
 registered module identities. Pair tests cover N=128/846/1380 and require the
 actual large Blackwell `tmk3_fast`/`v4` rows. Earlier graph-composition tests also
 passed; the graph measurements above use the immutable evaluation snapshot.
+
+Post-review regression validation: **527 CPU tests passed** on PyTorch 2.4.1
+(71 skipped, 11 deselected). **14 synthetic CUDA cases passed** on the Blackwell
+PyTorch 2.12 runtime: fused token/atom sampling plus pair stacks at
+N=128/846/1380, with both sequence-attention branches and fp32/bf16 sequence
+inputs. The SDPA checks assert bf16 queries and bf16 additive bias. Scope/RNG,
+input immutability, provider-row execution and cleanup assertions also pass.
+These are synthetic correctness checks, not new pretrained predictions or
+performance measurements. The shared core still reports its cc 12.0 fast rows
+as inherited from other architecture tables; the tests verify actual execution
+and the stated numerical tolerance, not an upstream measurement-table approval.
 
 ```bash
 python -m pytest tests/model/modules/test_fused_inference.py -v
@@ -220,6 +246,4 @@ A total of 156 pretrained model calls completed across the reference,
 component-ablation and final-source phases, with explicit warmup/timing
 replication purposes. Existing assets and controls were reused; scientific
 receipts, numerical outputs and unsuccessful engineering qualifications remain
-preserved. The original production predictor was resumed without restarting its
-controller or search, and a subsequent completed export was verified. No
-production settings, populations or historical scores were replaced.
+preserved.

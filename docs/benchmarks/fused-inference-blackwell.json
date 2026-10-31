@@ -5915,5 +5915,31 @@
     "recorded_output_structures_per_backend_including_repeats": 32,
     "total_calls_all_references_ablations_final": 156,
     "note": "Timing repeats are bit-identical within each mode and are not independent accuracy trials. Five-sample and single-sample ligand cases use the same assembly. The guided case returns one selected prediction from three particles."
+  },
+  "review_correction": {
+    "measured_pr_head": "9951e80fddd75e85d701b284090671a63eb366c4",
+    "status": "historical_pre_review_measurements",
+    "change": "Restore stock Pairformer sequence precision with --flash_attn; the measured source incorrectly forced fp32 sequence attention. Pair-containing modes require new full-model timing and score/pose comparisons. Denoiser kernels are unchanged.",
+    "corrected_source_full_model_revalidated": false,
+    "synthetic_validation": {
+      "cpu": {
+        "torch": "2.4.1",
+        "passed": 527,
+        "skipped": 71,
+        "deselected": 11
+      },
+      "cuda": {
+        "torch": "2.12.0+cu130",
+        "capability": [
+          12,
+          0
+        ],
+        "passed": 14,
+        "source_manifest_sha256": "cfe2ba814e8ef6969b3a181bedc04d29f02d709409ed94f67a29bdfd771c437f",
+        "coverage": "Pair N=128/846/1380, both attention branches, fp32/bf16 sequence inputs; token/atom uneven-chunk sampler, RNG and cleanup. No pretrained predictions.",
+        "current_runtime_functions_match_validated_snapshot": true,
+        "provider_tables": "opt_core reports cc12.0 fast selections inherited from other architecture tables; execution/tolerance tests passed."
+      }
+    }
   }
 }
