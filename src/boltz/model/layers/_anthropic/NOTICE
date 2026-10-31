@@ -1,0 +1,9 @@
+Copyright 2026 Anthropic, PBC
+
+The atom, token-transformer and resident pair-track implementation files in
+this directory are derived from anthropics/uplifting-biomolecular-modeling
+commit f4f62fa6592ae4938d49b1757bea0cfeff9f468e, boltz2/opt/forward/
+and boltz2/opt/boltz2_opt/.
+They are licensed under the Apache License, Version 2.0; see LICENSE.
+Local adaptations and original-file hashes are listed in PROVENANCE.json.
+The upstream stock/ distribution is not included here.

@@ -12,7 +12,7 @@ from torch import nn
 from torch.nn import Module
 
 import boltz.model.layers.initialize as init
-from boltz.model.layers import denoiser_inference
+from boltz.model.layers import denoiser_inference, fused_inference
 from boltz.data import const
 from boltz.model.loss.diffusionv2 import (
     smooth_lddt_loss,
@@ -330,6 +330,7 @@ class AtomDiffusion(Module):
         sigmas = F.pad(sigmas, (0, 1), value=0.0)  # last step is sigma value of 0.
         return sigmas
 
+    @fused_inference.sampling_scope
     @denoiser_inference.cache_sampling
     def sample(
         self,

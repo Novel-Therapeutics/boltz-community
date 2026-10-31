@@ -9,6 +9,7 @@ from torch.nn import Linear, Module, ModuleList
 from torch.nn.functional import one_hot
 
 import boltz.model.layers.initialize as init
+from boltz.model.layers import fused_inference
 from boltz.model.layers.transition import Transition
 from boltz.model.modules.transformersv2 import AtomTransformer
 from boltz.model.modules.utils import LinearNoBias, autocast_device_type
@@ -462,6 +463,9 @@ class AtomAttentionEncoder(Module):
         multiplicity=1,
         conditioning_cache=None,
     ):
+        fused = fused_inference.atom_encoder(self, feats, q, c, atom_enc_bias, to_keys, r, multiplicity, conditioning_cache)
+        if fused is not None:
+            return fused
         B, N, _ = feats["ref_pos"].shape
         atom_mask = feats["atom_pad_mask"].bool()  # Bool['b m'],
 
@@ -552,6 +556,9 @@ class AtomAttentionDecoder(Module):
         multiplicity=1,
         conditioning_cache=None,
     ):
+        fused = fused_inference.atom_decoder(self, a, q, c, atom_dec_bias, feats, to_keys, multiplicity, conditioning_cache)
+        if fused is not None:
+            return fused
         with torch.autocast(autocast_device_type(a.device.type), enabled=False):
             atom_to_token = feats["atom_to_token"].float()
             atom_to_token = atom_to_token.repeat_interleave(multiplicity, 0)
