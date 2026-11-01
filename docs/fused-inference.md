@@ -51,15 +51,80 @@ is added here. The upstream whole-sampler rollout is not ported: its fast row
 steps aside under potentials, whereas the fork's existing guidance loop is
 preserved here.
 
+## Corrected-source Blackwell evaluation
+
+Re-evaluated `8bdd12d` on 1 November 2026 (Eastern) with the same Blackwell
+runtime and three-recycle/200-step settings described below. `off` here means
+fusion off, with the fork's FlashPairformer `fast` and `--flash_attn` still on.
+All 156 earlier calls were audited before dispatch; their frozen features, RNG,
+checkpoint/reference hashes and scorer/policy identities were reused. Fresh
+same-source `off` calls provide contemporary timing controls and reproduce every
+historical control output hash. Load, preprocessing and serialization are
+excluded; per-prediction packing and cleanup are included.
+
+| Setting | Off | Pair | All | Pair time saved | All time saved |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 117 tokens, 1 sample | 3.91 s | 4.05 s | 2.04 s | -3.5% | 47.9% |
+| 846 tokens, 1 sample | 15.72 s | 11.08 s | 5.66 s | 29.5% | 64.0% |
+| 846 tokens, 5 samples | 36.82 s | 31.74 s | 8.54 s | 13.8% | 76.8% |
+| 1,380 tokens, guided, 3 particles / cap 1 | 90.97 s | 79.28 s | 41.17 s | 12.8% | 54.7% |
+
+| Setting / mode | Aligned all-atom RMSD vs off | Confidence delta range | Peak allocated GiB |
+| --- | ---: | ---: | ---: |
+| 117 tokens, 1 sample, pair | 0.000 Å | +0.000000 | 2.07 |
+| 117 tokens, 1 sample, all | 0.316 Å | +0.001343 | 2.89 |
+| 846 tokens, 1 sample, pair | 1.725 Å | +0.006381 | 6.40 |
+| 846 tokens, 1 sample, all | 1.725 Å | +0.006215 | 6.48 |
+| 846 tokens, 5 samples, pair | 0.052–1.725 Å | -0.001878 to +0.006374 | 7.79 |
+| 846 tokens, 5 samples, all | 0.104–1.853 Å | -0.003012 to +0.005345 | 8.05 |
+| 1,380 tokens, guided, 3 particles / cap 1, pair | 5.381 Å | +0.003942 | 14.27 |
+| 1,380 tokens, guided, 3 particles / cap 1, all | 5.296 Å | +0.004142 | 16.35 |
+
+Guided outputs (same scorer, full target assembly):
+
+- `off`: binding product 0.17594225, binder pLDDT 0.82066476, target-aligned binder RMSD vs off 0.000 Å.
+- `pair`: binding product 0.16285789, binder pLDDT 0.82760429, target-aligned binder RMSD vs off 20.243 Å.
+- `all`: binding product 0.16617877, binder pLDDT 0.81361789, target-aligned binder RMSD vs off 20.122 Å.
+
+The guided binder displacement remains about 20 Å after checking both valid
+assignments of the two identical target chains; it is not explained by merely
+swapping those labels. The target itself fits the control at about 0.5–0.6 Å
+all-atom RMSD. Binding product decreases by 7.4% in `pair` and 5.5% in `all`,
+while overall confidence increases. These are model-derived scores and pose
+differences, not experimental accuracy measurements. In the five-sample ligand
+case the highest-confidence output changes from sample 4 to sample 5 in both
+modes (one-based indices). All ligand outputs retain zero reported inversions,
+flattened stereocentres or out-of-range bonds across 12 checked centres and
+82 checked bonds per output. These counters do not check every geometric defect.
+
+All 48 planned calls completed: one warmup and three identical timing repeats
+per setting/mode, with 16 calls per mode. They cover **three independent assemblies,
+four settings, one fixed seed per assembly and eight paired output slots per
+mode**, not 48 independent biological examples. Repeats are bit-identical within
+each mode, and every mode ends with the control's CPU/CUDA RNG state. Both
+pair-containing modes serve the requested large pair stacks; `all` also serves
+token and atom kernels. The 117-token pair path deliberately stays with the
+original kernels and does not provide a speedup. Peak memory is PyTorch allocated
+memory, not device-level NVML usage.
+
+The gains justify further evaluation, while predictions, scores and sample
+ranking remain changed. Keep the feature off by default. This small engineering
+benchmark cannot establish either direction of experimental accuracy or an
+acceptable noninferiority margin. Raw receipts and unsuccessful earlier
+qualifications remain preserved; full numeric comparisons, scientific identities
+and symmetry checks are in the [corrected benchmark report](benchmarks/fused-inference-blackwell-corrected.json).
+
 ## Evaluation protocol
 
-**Historical measurements:** the timings, prediction differences and CUDA results
-below describe PR head `9951e80`, before review corrections. That source forced
+**Historical measurements:** the timing and prediction-comparison tables below
+describe PR head `9951e80`, before review corrections. The validation paragraphs
+separately identify pre-review and post-review checks. That source forced
 the Pairformer sequence track to fp32 even with `--flash_attn`; it changed both
 the sequence precision and the fused pair operations. The current source restores
-the stock sequence precision branch. Pair-containing modes need new full-model
-timings and score/pose comparisons; the historical results are not validation of
-the corrected source. The underlying denoiser kernels are unchanged.
+the stock sequence precision branch. The corrected pair-containing full-model
+timings and score/pose comparisons are now reported above for `8bdd12d`. The
+historical results remain preserved below and are not measurements of the
+corrected source. The underlying denoiser kernels are unchanged.
 
 Measured on 30 October 2026 (Eastern), RTX PRO 6000 Blackwell Workstation 96 GB
 (cc 12.0), driver 580.65.06, PyTorch 2.12.0+cu130, Triton 3.7.0 and
@@ -252,7 +317,7 @@ python -m pytest tests/model/modules/test_fused_inference.py -v
 python -m pytest tests/model/modules/test_fused_inference.py -m cuda -v
 ```
 
-A total of 156 pretrained model calls completed across the reference,
+The pre-review evaluation completed 156 pretrained model calls across the reference,
 component-ablation and final-source phases, with explicit warmup/timing
 replication purposes. Existing assets and controls were reused; scientific
 receipts, numerical outputs and unsuccessful engineering qualifications remain
