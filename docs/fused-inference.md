@@ -34,11 +34,15 @@ attention kernels. Functional pair bias routing avoids replacing registered mode
 values are released in `finally`; provider-native payload caches are cleared
 when the pair scope closes. No global class-forward patches are installed.
 
-Requested components log a warning once per process for each decline reason,
-including unsupported runtime/geometry, custom or compiled forwards, hooks,
-missing providers, cache conflicts and insufficient memory. Their first actual
-kernel use logs once at info level. Small/C=64 pair stacks can decline while
-larger stacks in the same prediction use fusion.
+Requested components log a warning once per process for each unexpected decline
+reason, including unsupported runtime/geometry, custom or compiled forwards,
+hooks, missing providers, cache conflicts and insufficient memory. Their first
+actual kernel use logs once at info level. Expected per-stack exclusions
+(C=64 templates, small stacks, affinity with autocast off, and provider cells
+not carried for a shape/device) log at info level as stacks using the original
+path. They can coexist with a fused trunk. Disabling kernels or an unexpected
+provider refusal still warns. Stock atom transformers outside the token
+transformer scope do not produce token-fusion decline notices.
 
 The graph prototype from PR #36 was also tested with the fusions. It preserved
 predictions but did not improve the selected workloads, so this branch carries
@@ -232,6 +236,12 @@ PyTorch 2.12 runtime: fused token/atom sampling plus pair stacks at
 N=128/846/1380, with both sequence-attention branches and fp32/bf16 sequence
 inputs. The SDPA checks assert bf16 queries and bf16 additive bias. Scope/RNG,
 input immutability, provider-row execution and cleanup assertions also pass.
+A subsequent diagnostic-only follow-up passes **537 CPU tests** on PyTorch
+2.4.1 (71 skipped, 11 deselected), including stock atom-transformer scope and
+expected-versus-unexpected pair-stack logging regressions. The 14 CUDA cases
+above belong to the preceding numerical implementation and were not rerun for
+this logging cleanup.
+
 These are synthetic correctness checks, not new pretrained predictions or
 performance measurements. The shared core still reports its cc 12.0 fast rows
 as inherited from other architecture tables; the tests verify actual execution

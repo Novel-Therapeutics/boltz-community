@@ -2,8 +2,6 @@
 
 import functools
 
-import torch
-
 
 def trimul_weights(m):
     """boltz TriangleMultiplication{Outgoing,Incoming} -> the core's ten canonical TriMul tensors (opt_core.trimul.WEIGHT_KEYS)."""

@@ -58,15 +58,20 @@ def _runtime_supported():
     return tuple(int(x) for x in version[:2]) >= (2, 12)
 
 
-def _notice(component, reason=None):
+def _notice(component, reason=None, *, stack=False):
     """Log each requested component's refusal or first actual use once."""
-    key = (component, reason)
+    key = (component, reason, stack)
     with _LOG_LOCK:
         if key in _LOGGED:
             return
         _LOGGED.add(key)
     if reason is None:
         logger.info("Fused inference %s: using fused kernels", component)
+    elif stack and (
+        reason in ("below_min_tokens", "autocast_off", "training")
+        or reason.startswith(("c:", "no_cell:"))
+    ):
+        logger.info("Fused inference pair: stack uses original path (%s)", reason)
     else:
         logger.warning(
             "Fused inference %s declined: %s; using original path", component, reason
@@ -215,7 +220,7 @@ def pair_stack(
     reason = backend._stack_word(layers[0], z, use_kernels, module.training)
     if reason is not None:
         scope.fallbacks[reason] = scope.fallbacks.get(reason, 0) + 1
-        _notice("pair", reason)
+        _notice("pair", reason, stack=True)
         return None
     zr = backend._enter(z)
     ctx = backend._make_ctx(zr, pair_mask)
@@ -479,7 +484,9 @@ def token_transformer(
         or conditioning_cache is not None
     ):
         return None
-    if module is not scope.net.token_transformer or to_keys is not None or bias is None:
+    if module is not scope.net.token_transformer:
+        return None
+    if to_keys is not None or bias is None:
         _notice("dit", "not_token_attention")
         return None
     # Validate the functional backend contract here so unsupported inputs use

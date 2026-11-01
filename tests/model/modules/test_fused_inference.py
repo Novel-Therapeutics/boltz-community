@@ -567,11 +567,11 @@ def test_declines_warn_once_per_component_reason_and_use_logs_info(caplog):
         for _ in range(2):
             fused._decline(("dit", "atom"), "unsupported_geometry")
             fused._notice("pair", "import:opt_core")
-            fused._notice("pair", "below_min_tokens")
+            fused._notice("pair", "below_min_tokens", stack=True)
             fused._notice("pair")
     assert len(caplog.records) == 5
-    assert [r.levelname for r in caplog.records].count("WARNING") == 4
-    assert [r.levelname for r in caplog.records].count("INFO") == 1
+    assert [r.levelname for r in caplog.records].count("WARNING") == 3
+    assert [r.levelname for r in caplog.records].count("INFO") == 2
 
 
 @pytest.mark.parametrize("reason", ["autocast", "weights", "lock"])
@@ -684,9 +684,12 @@ def test_safe_context_refusal_reports_specific_reason(monkeypatch, caplog, reaso
     assert reason in caplog.text
 
 
-def test_pair_provider_refusal_is_reported_and_counted(caplog):
+@pytest.mark.parametrize(
+    "reason", ["import:opt_core", "triatt:provider_refused", "kernels_off"]
+)
+def test_pair_provider_refusal_is_reported_and_counted(caplog, reason):
     module = torch.nn.Linear(2, 2).eval()
-    scope = fused.PairScope(SimpleNamespace(_stack_word=lambda *a: "import:opt_core"))
+    scope = fused.PairScope(SimpleNamespace(_stack_word=lambda *a: reason))
     token = fused._PAIR.set(scope)
     try:
         with torch.no_grad():
@@ -694,8 +697,9 @@ def test_pair_provider_refusal_is_reported_and_counted(caplog):
                 assert fused.pair_stack(module, None, None, True) is None
     finally:
         fused._PAIR.reset(token)
-    assert scope.fallbacks == {"import:opt_core": 2}
-    assert len(caplog.records) == 1 and "import:opt_core" in caplog.text
+    assert scope.fallbacks == {reason: 2}
+    assert len(caplog.records) == 1 and reason in caplog.text
+    assert caplog.records[0].levelname == "WARNING"
 
 
 def test_vendor_token_contract_never_reenters_class_forward():
@@ -706,3 +710,77 @@ def test_vendor_token_contract_never_reenters_class_forward():
         dit.fused_forward(
             SimpleNamespace(pair_bias_attn=True), torch.empty(1, 3, 8), None
         )
+
+
+def test_stock_atom_transformer_in_dit_scope_does_not_warn(caplog):
+    from .test_denoiser_inference import _case
+
+    sampler, mask, kwargs = _case("cpu")
+    net = sampler.score_model
+    atom = net.atom_attention_encoder.atom_encoder
+    cond = kwargs["diffusion_conditioning"]
+    args = dict(
+        q=cond["q"],
+        c=cond["c"],
+        bias=cond["atom_enc_bias"],
+        to_keys=cond["to_keys"],
+        mask=mask.bool(),
+    )
+    # An atom call must never reach any token backend attribute.
+    scope = fused.DenoiserScope(net, dit=object())
+    with torch.no_grad(), caplog.at_level("INFO", logger=fused.__name__):
+        expected = atom(**args)
+        token = fused._DENOISER.set(scope)
+        try:
+            actual = atom(**args)
+        finally:
+            fused._DENOISER.reset(token)
+    assert torch.equal(actual, expected)
+    assert scope.calls["dit"] == 0 and not caplog.records
+
+
+@pytest.mark.parametrize("missing", ["bias", "to_keys"])
+def test_actual_token_transformer_still_warns_for_invalid_attention(caplog, missing):
+    module = torch.nn.Identity()
+    scope = fused.DenoiserScope(SimpleNamespace(token_transformer=module), dit=object())
+    token = fused._DENOISER.set(scope)
+    try:
+        with torch.no_grad():
+            assert (
+                fused.token_transformer(
+                    module,
+                    torch.empty(1, 3, 8),
+                    None,
+                    None if missing == "bias" else torch.ones(1),
+                    None,
+                    object() if missing == "to_keys" else None,
+                    1,
+                    None,
+                )
+                is None
+            )
+    finally:
+        fused._DENOISER.reset(token)
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelname == "WARNING"
+    assert "dit declined: not_token_attention" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ["c:64", "below_min_tokens", "autocast_off", "no_cell:triattn:shape", "training"],
+)
+def test_expected_pair_stack_exclusions_log_once_as_info(caplog, reason):
+    module = torch.nn.Linear(2, 2).eval()
+    scope = fused.PairScope(SimpleNamespace(_stack_word=lambda *a: reason))
+    token = fused._PAIR.set(scope)
+    try:
+        with torch.no_grad(), caplog.at_level("INFO", logger=fused.__name__):
+            for _ in range(2):
+                assert fused.pair_stack(module, None, None, True) is None
+    finally:
+        fused._PAIR.reset(token)
+    assert scope.fallbacks == {reason: 2}
+    assert len(caplog.records) == 1 and caplog.records[0].levelname == "INFO"
+    assert "stack uses original path" in caplog.text and reason in caplog.text
+    assert "declined" not in caplog.text

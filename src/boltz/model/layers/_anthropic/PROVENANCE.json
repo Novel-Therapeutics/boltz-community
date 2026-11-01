@@ -19,7 +19,8 @@
     "pin": "f4f62fa6592ae4938d49b1757bea0cfeff9f468e",
     "original_sha256": "60fa9333035e2ca8c7ff7b97356c1cef706a76ede352fc6a6c77844f374ef738",
     "changes": [
-      "Remove instance patch installer and class-forward fallbacks; configure is a pure kernel setup function. An invalid internal invocation raises instead of recursively falling back. Replace upstream lever documentation with functional entry points."
+      "Remove instance patch installer and class-forward fallbacks; configure is a pure kernel setup function. An invalid internal invocation raises instead of recursively falling back. Replace upstream lever documentation with functional entry points.",
+      "Remove unused functional import and local width alias after trimming."
     ]
   },
   "pair.py": {
@@ -46,7 +47,8 @@
       "boltz2/opt/boltz2_opt/pairblock.py": "0e2cd0c15d7a7cacd8e9b74e364d473201f3364c429ffaac87ad7fb9283efa3a"
     },
     "changes": [
-      "Extract and rename canonical weights_of mappings; bind the triangle-attention provider functionally without installing class or instance forward patches."
+      "Extract and rename canonical weights_of mappings; bind the triangle-attention provider functionally without installing class or instance forward patches.",
+      "Remove unused torch import."
     ]
   }
 }

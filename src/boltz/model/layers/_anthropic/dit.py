@@ -12,7 +12,6 @@ import os
 import sys
 
 import torch
-import torch.nn.functional as F
 
 try:
     import triton
@@ -272,7 +271,6 @@ class _State:
         self.scale = 1.0 / (self.HD ** 0.5)
         self.eps = float(lay[0].adaln.a_norm.eps)
         self.HID = int(lay[0].transition.b_to_a.in_features)
-        D = self.D
         with torch.no_grad():
             self.w_qkvg, self.bq, self.w_o, self.w_tri, self.w_b2a = [], [], [], [], []
             cs_rows, og_rows, self.bcs_a, self.bcs_t, self.bog_a, self.bog_t = [], [], [], [], [], []
