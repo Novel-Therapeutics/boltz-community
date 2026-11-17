@@ -82,7 +82,8 @@ def to_pdb(
     pdb_lines = []
 
     atom_index = 1
-    atom_reindex_ter = []
+    # Source atom indices are sparse when atoms or residues are not written.
+    atom_reindex_ter: dict[int, int] = {}
 
     # Load periodic table for element mapping
     periodic_table = Chem.GetPeriodicTable()
@@ -107,9 +108,15 @@ def to_pdb(
             stacklevel=2,
         )
 
-    for chain, chain_tag in zip(structure.chains, pdb_chain_ids):
-        # We rename the chains in alphabetical order
-        chain_idx = chain["asym_id"]
+    for chain_idx, (chain, chain_tag) in enumerate(
+        zip(structure.chains, pdb_chain_ids)
+    ):
+        last_written_residue = None
+        record_type = (
+            "ATOM"
+            if chain["mol_type"] != const.chain_type_ids["NONPOLYMER"]
+            else "HETATM"
+        )
 
         res_start = chain["res_idx"]
         res_end = chain["res_idx"] + chain["res_num"]
@@ -126,11 +133,6 @@ def to_pdb(
                 if not atom["is_present"]:
                     continue
 
-                record_type = (
-                    "ATOM"
-                    if chain["mol_type"] != const.chain_type_ids["NONPOLYMER"]
-                    else "HETATM"
-                )
                 name = str(atom["name"])
                 if boltz2:
                     element = periodic_table.GetElementSymbol(
@@ -187,15 +189,17 @@ def to_pdb(
                     f"{element:>2}{charge:<2}"
                 )
                 pdb_lines.append(atom_line)
-                atom_reindex_ter.append(atom_index)
+                atom_reindex_ter[atom_start + i] = atom_index
+                last_written_residue = (res_name_3, residue_index)
                 atom_index += 1
 
             if record_type != "HETATM":
                 res_num += 1
 
         should_terminate = chain_idx < (len(structure.chains) - 1)
-        if should_terminate:
+        if should_terminate and last_written_residue is not None:
             # Close the chain.
+            res_name_3, residue_index = last_written_residue
             chain_end = "TER"
             chain_termination_line = (
                 f"{chain_end:<6}{atom_index:>5}      "
@@ -211,9 +215,10 @@ def to_pdb(
         all_bonds.extend(list(structure.connections))
 
     for bond in all_bonds:
-        atom1 = structure.atoms[bond["atom_1"]]
-        atom2 = structure.atoms[bond["atom_2"]]
-        if not atom1["is_present"] or not atom2["is_present"]:
+        if (
+            bond["atom_1"] not in atom_reindex_ter
+            or bond["atom_2"] not in atom_reindex_ter
+        ):
             continue
         atom1_idx = atom_reindex_ter[bond["atom_1"]]
         atom2_idx = atom_reindex_ter[bond["atom_2"]]

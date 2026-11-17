@@ -1,12 +1,16 @@
 """Tests for boltz.data.write.pdb — to_pdb."""
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 import torch
 
 from boltz.data import const
 from boltz.data.types import (
+    Atom,
     AtomV2,
+    Bond,
     BondV2,
     Chain,
     Connection,
@@ -14,6 +18,7 @@ from boltz.data.types import (
     Ensemble,
     Interface,
     Residue,
+    Structure,
     StructureV2,
 )
 from boltz.data.write.pdb import to_pdb
@@ -188,6 +193,162 @@ class TestLigandResidueName:
 
 def _conect_lines(pdb_str):
     return [l.rstrip() for l in pdb_str.split("\n") if l.startswith("CONECT")]
+
+
+def _connectivity_structure(boltz2, atom_counts=(4,), bonds=()):
+    """Build one residue per chain in either atom format, with source-index bonds."""
+    atoms = np.zeros(sum(atom_counts), dtype=AtomV2 if boltz2 else Atom)
+    for i, atom in enumerate(atoms):
+        name = f"C{i + 1}"
+        atom["name"] = name if boltz2 else [ord(c) - 32 for c in name.ljust(4)]
+        atom["element"] = 6
+        atom["coords"] = (float(i), 0, 0)
+        atom["is_present"] = True
+    residues = np.zeros(len(atom_counts), dtype=Residue)
+    chains = np.zeros(len(atom_counts), dtype=Chain)
+    start = 0
+    for i, count in enumerate(atom_counts):
+        residues[i]["name"] = "ALA"
+        residues[i]["res_idx"] = i
+        residues[i]["atom_idx"] = start
+        residues[i]["atom_num"] = count
+        residues[i]["is_present"] = True
+        chains[i]["name"] = chr(ord("A") + i)
+        chains[i]["mol_type"] = const.chain_type_ids["PROTEIN"]
+        chains[i]["asym_id"] = i
+        chains[i]["res_idx"] = i
+        chains[i]["res_num"] = 1
+        chains[i]["atom_idx"] = start
+        chains[i]["atom_num"] = count
+        start += count
+    bond_array = np.zeros(len(bonds), dtype=BondV2 if boltz2 else Bond)
+    for bond, (atom1, atom2, bond_type) in zip(bond_array, bonds):
+        bond["atom_1"] = atom1
+        bond["atom_2"] = atom2
+        bond["type"] = const.bond_type_ids[bond_type]
+    fields = dict(
+        atoms=atoms, bonds=bond_array, residues=residues, chains=chains,
+        interfaces=np.zeros(0, dtype=Interface), mask=np.ones(len(chains), dtype=bool),
+    )
+    if boltz2:
+        ensemble = np.zeros(1, dtype=Ensemble)
+        ensemble[0]["atom_num"] = len(atoms)
+        coords = np.zeros(len(atoms), dtype=Coords)
+        coords["coords"] = atoms["coords"]
+        return StructureV2(**fields, coords=coords, ensemble=ensemble)
+    return Structure(**fields, connections=np.zeros(0, dtype=Connection))
+
+
+@pytest.mark.parametrize("boltz2", [False, True], ids=["boltz1", "boltz2"])
+class TestSparseAtomConnectivity:
+    """Source indices must resolve to emitted serials, including TER gaps (#719)."""
+
+    def test_missing_atoms_and_endpoints(self, boltz2):
+        structure = _connectivity_structure(boltz2, bonds=[
+            (0, 2, "SINGLE"), (2, 3, "DOUBLE"),
+            (0, 1, "SINGLE"), (1, 3, "TRIPLE"),
+        ])
+        structure.atoms[1]["is_present"] = False
+        assert _conect_lines(to_pdb(structure, boltz2=boltz2)) == [
+            "CONECT    1    2", "CONECT    2    3    3",
+        ]
+
+    def test_present_but_unwritten_endpoints(self, boltz2):
+        structure = _connectivity_structure(boltz2, bonds=[
+            (0, 1, "SINGLE"), (1, 3, "SINGLE"), (1, 2, "TRIPLE"),
+        ])
+        # Atoms 0 and 3 exist but are outside the exported residue's atom span.
+        structure.residues[0]["atom_idx"] = 1
+        structure.residues[0]["atom_num"] = 2
+        if not boltz2:
+            connections = np.zeros(3, dtype=Connection)
+            connections["atom_1"] = [0, 1, 2]
+            connections["atom_2"] = [1, 3, 1]
+            structure = replace(structure, connections=connections)
+        expected = ["CONECT    1    2    2    2"]
+        if not boltz2:
+            expected.append("CONECT    2    1")
+        assert _conect_lines(to_pdb(structure, boltz2=boltz2)) == expected
+
+    def test_multiple_chains_aliases_and_ter_serial_shifts(self, boltz2):
+        structure = _connectivity_structure(boltz2, (3, 3, 3), bonds=[
+            (0, 2, "DOUBLE"), (3, 5, "TRIPLE"), (6, 8, "SINGLE"),
+            (2, 3, "SINGLE"),
+        ])
+        structure.atoms["is_present"][[1, 4, 7]] = False
+        structure.chains["asym_id"] = [9, 0, 40]
+        structure.chains["name"] = ["P1", "A", "L1"]
+        structure.chains[1]["mol_type"] = const.chain_type_ids["NONPOLYMER"]
+        structure.residues[1]["name"] = "ATP"
+        if not boltz2:
+            connections = np.zeros(3, dtype=Connection)
+            connections["atom_1"] = [2, 1, 3]
+            connections["atom_2"] = [3, 3, 4]
+            structure = replace(structure, connections=connections)
+        with pytest.warns(UserWarning, match="P1 -> B, L1 -> C"):
+            lines = to_pdb(structure, boltz2=boltz2).splitlines()
+        assert all(len(line) == 80 for line in lines)
+        records = [line for line in lines if line.startswith(("ATOM", "HETATM", "TER"))]
+        assert [(line[:6].strip(), int(line[6:11]), line[21]) for line in records] == [
+            ("ATOM", 1, "B"), ("ATOM", 2, "B"), ("TER", 3, "B"),
+            ("HETATM", 4, "A"), ("HETATM", 5, "A"), ("TER", 6, "A"),
+            ("ATOM", 7, "C"), ("ATOM", 8, "C"),
+        ]
+        assert [(line[17:20], int(line[22:26])) for line in records if line.startswith("TER")] == [
+            ("ALA", 1), ("ATP", 2),
+        ]
+        expected = [
+            "CONECT    1    2    2", "CONECT    4    5    5    5",
+            "CONECT    7    8", "CONECT    2    4",
+        ]
+        if not boltz2:
+            expected.append("CONECT    2    4")
+        assert _conect_lines("\n".join(lines)) == expected
+
+    @pytest.mark.parametrize("empty_kind", ["no_residues", "no_atoms", "missing_atoms"])
+    @pytest.mark.parametrize("empty_chain", [0, 1, 2])
+    def test_empty_chains_do_not_emit_stale_ter(self, boltz2, empty_kind, empty_chain):
+        structure = _connectivity_structure(boltz2, (1, 1, 1))
+        if empty_kind == "no_residues":
+            structure.chains[empty_chain]["res_num"] = 0
+        elif empty_kind == "no_atoms":
+            structure.residues[empty_chain]["atom_num"] = 0
+        else:
+            structure.atoms[empty_chain]["is_present"] = False
+        lines = to_pdb(structure, boltz2=boltz2).splitlines()
+        records = [line for line in lines if line.startswith(("ATOM", "TER"))]
+        expected = []
+        serial = 1
+        for i, tag in enumerate("ABC"):
+            if i == empty_chain:
+                continue
+            expected.append(("ATOM", serial, tag))
+            serial += 1
+            if i < 2:
+                expected.append(("TER", serial, tag))
+                serial += 1
+        assert [(line[:6].strip(), int(line[6:11]), line[21]) for line in records] == expected
+
+    @pytest.mark.parametrize("atom_counts", [(), (0,), (0, 0), (2,), (2, 2)])
+    def test_no_written_atoms(self, boltz2, atom_counts):
+        structure = _connectivity_structure(boltz2, atom_counts)
+        structure.atoms["is_present"] = False
+        assert to_pdb(structure, boltz2=boltz2) == f"{'END':<80}\n"
+
+    def test_missing_residues_keep_confidence_and_ter_identity(self, boltz2):
+        structure = _connectivity_structure(boltz2, (1, 1, 1, 1))
+        # Export the first three residues as one chain; only its middle residue emits.
+        chains = structure.chains[[0, 3]].copy()
+        chains[0]["res_num"] = 3
+        chains[0]["atom_num"] = 3
+        structure = replace(structure, chains=chains)
+        structure.atoms["is_present"][[0, 2]] = False
+        structure.residues[1]["name"] = "GLY"
+        lines = to_pdb(structure, boltz2=boltz2, plddts=torch.tensor([.1, .2, .3, .4])).splitlines()
+        atoms = [line for line in lines if line.startswith("ATOM")]
+        assert [float(line[60:66]) for line in atoms] == [20.0, 40.0]
+        ter = [line for line in lines if line.startswith("TER")]
+        assert [(line[17:20], line[21], int(line[22:26])) for line in ter] == [("GLY", "A", 2)]
 
 
 class TestConectBondOrder:
