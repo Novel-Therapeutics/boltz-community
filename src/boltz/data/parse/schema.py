@@ -1659,6 +1659,9 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
             c2, r2, a2 = _resolve_bond_constraint_atom(
                 constraint["bond"]["atom2"], atom_idx_map
             )
+            if boltz_2 and a1 == a2:
+                msg = "A covalent bond must connect two distinct atoms."
+                raise ValueError(msg)
             connections.append((c1, c2, r1, r2, a1, a2))
             _add_explicit_bond_bound_constraint(
                 rdkit_bounds_constraint_data,

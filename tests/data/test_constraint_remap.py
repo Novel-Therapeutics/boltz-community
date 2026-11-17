@@ -45,6 +45,7 @@ def _features():
         "rdkit_bounds_angle_mask": torch.tensor([False, False, True]),
         "rdkit_upper_bounds": torch.tensor([1.0, 2.0, 3.0]),
         "rdkit_lower_bounds": torch.tensor([0.5, 1.5, 2.5]),
+        "rdkit_bounds_guidance_only_mask": torch.tensor([True, False, False]),
         "stereo_bond_index": torch.empty((4, 0), dtype=torch.long),
         "stereo_reference_mask": torch.empty((0,), dtype=torch.bool),
         "stereo_bond_orientations": torch.empty((0,), dtype=torch.bool),
@@ -67,6 +68,84 @@ def test_uncropped_features_are_unchanged():
     assert remapped.keys() == features.keys()
     for key, value in features.items():
         assert torch.equal(remapped[key], value), key
+
+
+def test_mixed_connections_keep_bounds_and_interchain_rows_associated():
+    """An intra-chain link is not a column of the chain-connectivity table."""
+    from boltz.data import const
+    from boltz.data.feature.featurizerv2 import process_chain_feature_constraints
+    from boltz.data.types import BondV2, Chain
+    from boltz.model.potentials.potentials import ConnectionsPotential
+
+    data = _data(ALL_TOKENS[2:8])  # Full atoms 4-11 become feature atoms 0-7.
+    data.structure.chains = np.zeros(3, dtype=Chain)
+    data.structure.chains["entity_id"] = [0, 1, 0]
+    covalent = const.bond_type_ids["COVALENT"]
+    data.structure.bonds = np.array(
+        [
+            (0, 0, 0, 2, 0, 4, covalent),  # Cropped-out internal endpoint.
+            (0, 1, 3, 4, 7, 8, covalent),  # Survives, first chain row.
+            (0, 0, 2, 3, 4, 6, covalent),  # Survives, element-specific bounds.
+            (0, 0, 3, 2, 6, 4, covalent),  # Reversed duplicate, no extra force.
+            (1, 2, 4, 5, 8, 12, covalent),  # Removed, second chain row.
+        ],
+        dtype=BondV2,
+    )
+    # The element lookup must use feature indices rather than full indices.
+    ref_element = torch.nn.functional.one_hot(
+        torch.tensor([6, 7, 16, 8, 6, 6, 6, 6]), const.num_elements
+    )
+    raw = process_chain_feature_constraints(data, ref_element)
+    saved = {k: v.clone() for k, v in raw.items()}
+    features = remap_constraint_features(data, raw)
+    assert features["connected_atom_index"].T.tolist() == [[3, 4], [0, 2]]
+    assert features["connected_chain_index"].T.tolist() == [[0, 1]]
+    assert features["connected_atom_is_interchain"].tolist() == [True, False]
+    torch.testing.assert_close(
+        features["connected_atom_lower_bounds"], torch.tensor([0.0, 1.58375])
+    )
+    torch.testing.assert_close(
+        features["connected_atom_upper_bounds"], torch.tensor([0.0, 2.03625])
+    )
+    for name in raw:
+        assert torch.equal(raw[name], saved[name]), name
+
+    xyz = torch.zeros(1, 8, 3)
+    xyz[0, 4, 0] = 3.0  # Inter-chain distance 3.0, violation 1.0.
+    xyz[0, 2, 0] = 1.8  # Intra-chain distance 1.8, inside its bounds.
+    energy = ConnectionsPotential().compute(
+        xyz, {k: v[None] for k, v in features.items()}, {"buffer": 2.0}
+    )
+    torch.testing.assert_close(energy, torch.tensor([1.0]))
+
+
+def test_bound_selection_is_renumbered_after_crop_and_token_reordering():
+    features = _features()
+    features["intrachain_covalent_bound_indices"] = torch.tensor([0, 2])
+    # Reordering is legal: atom features are produced in exactly token order.
+    data = _data(ALL_TOKENS[4:8] + ALL_TOKENS[2:4])
+    remapped = remap_constraint_features(data, features)
+    assert remapped["rdkit_bounds_index"].T.tolist() == [[4, 0]]
+    assert remapped["intrachain_covalent_bound_indices"].tolist() == [0]
+    assert features["intrachain_covalent_bound_indices"].tolist() == [0, 2]
+
+
+def test_all_removed_new_constraints_have_consistent_empty_shapes():
+    features = _features()
+    features["intrachain_covalent_bound_indices"] = torch.tensor([0, 2])
+    features["connected_atom_lower_bounds"] = torch.tensor([1.0, 2.0])
+    features["connected_atom_upper_bounds"] = torch.tensor([2.0, 3.0])
+    features["connected_atom_is_interchain"] = torch.tensor([True, True])
+    remapped = remap_constraint_features(_data(ALL_TOKENS[1:2]), features)
+    assert remapped["connected_atom_index"].shape == (2, 0)
+    assert remapped["connected_chain_index"].shape == (2, 0)
+    for key in (
+        "connected_atom_lower_bounds",
+        "connected_atom_upper_bounds",
+        "connected_atom_is_interchain",
+        "intrachain_covalent_bound_indices",
+    ):
+        assert remapped[key].shape == (0,), key
 
 
 class TestCrop:
@@ -92,6 +171,7 @@ class TestCrop:
         assert remapped["rdkit_bounds_angle_mask"].tolist() == [False]
         assert remapped["rdkit_upper_bounds"].tolist() == [1.0]
         assert remapped["rdkit_lower_bounds"].tolist() == [0.5]
+        assert remapped["rdkit_bounds_guidance_only_mask"].tolist() == [True]
 
     def test_connections_follow_their_atoms(self, remapped):
         assert remapped["connected_atom_index"].tolist() == [[3], [4]]

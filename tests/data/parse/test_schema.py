@@ -455,6 +455,26 @@ class TestExplicitBondConstraints:
                 boltz_2=True,
             )
 
+    def test_boltz2_self_link_is_rejected_during_input_validation(self, tmp_path):
+        """Self-links must fail during parsing for skip_bad_inputs to handle them."""
+        from boltz.data.parse.schema import parse_boltz_schema
+
+        schema = {
+            "sequences": [{"ligand": {"id": "A", "ccd": "CAR"}}],
+            "constraints": [
+                {"bond": {"atom1": ["A", 1, "C1"], "atom2": ["A", 1, "C1"]}}
+            ],
+        }
+        carbon = _make_named_mol([("C1", 6)], [])
+        with pytest.raises(ValueError, match="two distinct atoms"):
+            parse_boltz_schema(
+                tmp_path / "self_link.yaml",
+                schema,
+                ccd={"CAR": carbon},
+                mol_dir=tmp_path,
+                boltz_2=True,
+            )
+
     def test_unknown_element_bond_uses_fallback_bound(self, tmp_path, caplog):
         """Unknown covalent radii should fall back to a generic bond length."""
         from boltz.data.parse.schema import parse_boltz_schema

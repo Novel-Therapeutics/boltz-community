@@ -111,6 +111,8 @@ def check_structures(
                 feats["rdkit_bounds_bond_mask"][b].bool()
                 & ~feats["rdkit_bounds_angle_mask"][b].bool()
             )
+            if "rdkit_bounds_guidance_only_mask" in feats:
+                bond &= ~feats["rdkit_bounds_guidance_only_mask"][b].bool()
             if bond.any():
                 index = feats["rdkit_bounds_index"][b][:, bond]
                 length = torch.linalg.norm(x[index[0]] - x[index[1]], dim=-1)
