@@ -12,7 +12,7 @@ from torch import nn
 from torch.nn import Module
 
 import boltz.model.layers.initialize as init
-from boltz.model.layers import denoiser_inference
+from boltz.model.layers import denoiser_graph, denoiser_inference
 from boltz.data import const
 from boltz.model.loss.diffusionv2 import (
     smooth_lddt_loss,
@@ -330,6 +330,7 @@ class AtomDiffusion(Module):
         sigmas = F.pad(sigmas, (0, 1), value=0.0)  # last step is sigma value of 0.
         return sigmas
 
+    @denoiser_graph.graph_sampling
     @denoiser_inference.cache_sampling
     def sample(
         self,
@@ -338,6 +339,7 @@ class AtomDiffusion(Module):
         multiplicity=1,
         max_parallel_samples=None,
         steering_args=None,
+        _denoiser_graph=None,
         **network_condition_kwargs,
     ):
         default_steering_args = {
@@ -451,14 +453,18 @@ class AtomDiffusion(Module):
                 atom_coords_denoised = torch.zeros_like(atom_coords_noisy)
                 for sample_ids_chunk in sample_id_chunks:
                     chunk_multiplicity = sample_ids_chunk.numel() // batch_size
-                    atom_coords_denoised_chunk = self.preconditioned_network_forward(
-                        atom_coords_noisy[sample_ids_chunk],
-                        t_hat,
-                        network_condition_kwargs=dict(
-                            multiplicity=chunk_multiplicity,
-                            **network_condition_kwargs,
-                        ),
+                    chunk_kwargs = dict(
+                        multiplicity=chunk_multiplicity, **network_condition_kwargs
                     )
+                    if _denoiser_graph is None:
+                        atom_coords_denoised_chunk = self.preconditioned_network_forward(
+                            atom_coords_noisy[sample_ids_chunk], t_hat,
+                            network_condition_kwargs=chunk_kwargs,
+                        )
+                    else:
+                        atom_coords_denoised_chunk = _denoiser_graph.run(
+                            atom_coords_noisy[sample_ids_chunk], t_hat, chunk_kwargs
+                        )
                     atom_coords_denoised[sample_ids_chunk] = atom_coords_denoised_chunk
 
                 if steering_args["fk_steering"] and (

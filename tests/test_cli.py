@@ -82,20 +82,21 @@ class TestBatchSizeOption:
 
 
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
+@pytest.mark.parametrize("setting", ["BOLTZ_DENOISER_CACHE", "BOLTZ_DENOISER_GRAPH"])
 def test_bad_denoiser_setting_rejected_before_prediction_setup(
-    tmp_path, monkeypatch, accelerator
+    tmp_path, monkeypatch, accelerator, setting
 ):
     from click.testing import CliRunner
 
     input_path = tmp_path / "input.yaml"
     input_path.write_text("version: 1\nsequences: []\n")
-    monkeypatch.setenv("BOLTZ_DENOISER_CACHE", "typo")
+    monkeypatch.setenv(setting, "typo")
     with patch("boltz.main.download_boltz2") as download:
         result = CliRunner().invoke(
             predict, [str(input_path), "--accelerator", accelerator]
         )
     assert result.exit_code == 2
-    assert "BOLTZ_DENOISER_CACHE" in result.output
+    assert setting in result.output
     download.assert_not_called()
 
 
