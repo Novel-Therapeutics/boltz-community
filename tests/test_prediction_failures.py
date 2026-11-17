@@ -1,6 +1,7 @@
 """Prediction failures must be visible to CLI callers after successful writes."""
 
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -14,7 +15,14 @@ from pytorch_lightning.strategies import DDPStrategy
 import boltz.main as main
 from boltz.data import const
 from boltz.data.module import inference, inferencev2
-from boltz.data.types import AffinityInfo, ChainInfo, Manifest, Record, StructureInfo
+from boltz.data.types import (
+    AffinityInfo,
+    ChainInfo,
+    Manifest,
+    Record,
+    StructureInfo,
+    get_affinity_output_id,
+)
 from boltz.data.write.writer import BoltzAffinityWriter, BoltzWriter, PredictionError
 from boltz.model.models.boltz1 import Boltz1
 from boltz.model.models.boltz2 import Boltz2
@@ -123,6 +131,10 @@ def _run_cli(
     trainer_configs=None,
     batch_size=1,
     accelerator="cpu",
+    affinity_indices=None,
+    repeated_binders=False,
+    data_manifests=None,
+    model_loads=None,
 ):
     (tmp_path / "input.yaml").write_text("version: 1\n")
     records = [
@@ -141,10 +153,28 @@ def _run_cli(
                     entity_id=0,
                 )
             ],
-            affinity=AffinityInfo(chain_id=0, mw=100.0) if affinity_outcomes else None,
+            affinity=(
+                AffinityInfo(chain_id=0, mw=100.0)
+                if affinity_outcomes
+                and (affinity_indices is None or i in affinity_indices)
+                else None
+            ),
         )
         for i in range(len(structure_outcomes))
     ]
+    if repeated_binders:
+        records = [
+            replace(
+                record,
+                chains=[
+                    replace(record.chains[0], chain_name="L1"),
+                    replace(record.chains[0], chain_id=1, chain_name="L2"),
+                ],
+            )
+            if record.affinity
+            else record
+            for record in records
+        ]
     manifest = Manifest(records=records)
     calls = []
     output = tmp_path / "boltz_results_input" / "predictions"
@@ -158,18 +188,33 @@ def _run_cli(
     monkeypatch.setattr(main, "check_inputs", lambda data, **_: [data])
     monkeypatch.setattr(main, "process_inputs", lambda **_: None)
     monkeypatch.setattr(Manifest, "load", lambda *_: manifest)
-    monkeypatch.setattr(inference, "BoltzInferenceDataModule", lambda **kw: kw)
-    monkeypatch.setattr(inferencev2, "Boltz2InferenceDataModule", lambda **kw: kw)
+
+    def data_module(**kwargs):
+        if data_manifests is not None:
+            data_manifests.append(kwargs)
+        return kwargs
+
+    def load_model(*args, **kwargs):
+        if model_loads is not None:
+            model_loads.append(
+                "structure"
+                if kwargs["predict_args"]["write_confidence_summary"]
+                else "affinity"
+            )
+        return SimpleNamespace(eval=lambda: None)
+
+    monkeypatch.setattr(inference, "BoltzInferenceDataModule", data_module)
+    monkeypatch.setattr(inferencev2, "Boltz2InferenceDataModule", data_module)
     monkeypatch.setattr(main, "_validate_checkpoint_for_load", lambda *_: None)
     monkeypatch.setattr(
         Boltz1,
         "load_from_checkpoint",
-        lambda *a, **kw: SimpleNamespace(eval=lambda: None),
+        load_model,
     )
     monkeypatch.setattr(
         Boltz2,
         "load_from_checkpoint",
-        lambda *a, **kw: SimpleNamespace(eval=lambda: None),
+        load_model,
     )
 
     class Trainer:
@@ -397,6 +442,124 @@ def test_cli_sizes_affinity_when_all_structure_is_existing(monkeypatch, tmp_path
     assert result.exit_code == 0, result.output
     assert calls == ["affinity"]
     assert [config["devices"] for config in configs] == [1]
+
+
+def test_mixed_completed_manifest_skips_all_prediction_setup(monkeypatch, tmp_path):
+    configs, modules, loads = [], [], []
+    result, calls, output = _run_cli(
+        monkeypatch,
+        tmp_path,
+        [True, True],
+        [True, True],
+        affinity_indices={1},
+        existing={
+            0: ("saved.cif",),
+            1: ("saved.cif", "pre_affinity_case1.npz", "affinity_case1.json"),
+        },
+        devices="3",
+        trainer_configs=configs,
+        data_manifests=modules,
+        model_loads=loads,
+    )
+    assert result.exit_code == 0, result.output
+    assert calls == configs == modules == loads == []
+    assert all(
+        path.read_text() == "existing output\n"
+        for path in output.rglob("*")
+        if path.is_file()
+    )
+
+
+@pytest.mark.parametrize("structures_existing", [False, True])
+@pytest.mark.parametrize("affinity_failed", [False, True])
+def test_mixed_manifest_only_predicts_requested_affinity(
+    monkeypatch, tmp_path, structures_existing, affinity_failed
+):
+    configs, modules, loads = [], [], []
+    result, calls, output = _run_cli(
+        monkeypatch,
+        tmp_path,
+        [False, False],
+        [True, affinity_failed],
+        affinity_indices={1},
+        existing={0: ("saved.cif",), 1: ("saved.cif", "pre_affinity_case1.npz")}
+        if structures_existing
+        else None,
+        devices="3",
+        trainer_configs=configs,
+        data_manifests=modules,
+        model_loads=loads,
+    )
+    assert result.exit_code == int(affinity_failed), result.output
+    expected = ["affinity"] if structures_existing else ["structure", "affinity"]
+    assert calls == loads == expected
+    assert [config["devices"] for config in configs] == (
+        [1] if structures_existing else [2, 1]
+    )
+    assert [record.id for record in modules[-1]["manifest"].records] == ["case1"]
+    if not structures_existing:
+        assert [record.id for record in modules[0]["manifest"].records] == [
+            "case0",
+            "case1",
+        ]
+    assert (output / "case0" / "saved.cif").read_text() == (
+        "existing output\n" if structures_existing else "successful prediction\n"
+    )
+    assert not (output / "case0" / "affinity_case0.json").exists()
+    assert (output / "case1" / "affinity_case1.json").exists() is not affinity_failed
+    if affinity_failed:
+        assert "1 prediction(s) failed" in result.output
+
+
+def test_mixed_manifest_keeps_per_binder_skip_identity(monkeypatch, tmp_path):
+    configs, modules = [], []
+    result, calls, output = _run_cli(
+        monkeypatch,
+        tmp_path,
+        [True, True],
+        [True, False],
+        affinity_indices={1},
+        repeated_binders=True,
+        existing={
+            0: ("saved.cif",),
+            1: ("saved.cif", "pre_affinity_case1.npz", "affinity_case1_L1.json"),
+        },
+        devices="3",
+        trainer_configs=configs,
+        data_manifests=modules,
+    )
+    assert result.exit_code == 0, result.output
+    assert calls == ["affinity"]
+    assert [config["devices"] for config in configs] == [1]
+    assert [
+        (record.id, get_affinity_output_id(record))
+        for record in modules[0]["manifest"].records
+    ] == [("case1", "case1_L2")]
+    assert (
+        output / "case1" / "affinity_case1_L1.json"
+    ).read_text() == "existing output\n"
+    saved = json.loads((output / "case1" / "affinity_case1_L2.json").read_text())
+    assert saved["binder_chain"] == "L2"
+    assert saved["affinity_pred_value"] == 1.25
+    assert not (output / "case0" / "affinity_case0.json").exists()
+
+
+def test_mixed_manifest_still_rejects_missing_requested_structure(
+    monkeypatch, tmp_path
+):
+    result, calls, output = _run_cli(
+        monkeypatch,
+        tmp_path,
+        [False, False],
+        [True, False],
+        affinity_indices={1},
+        missing_pre=(1,),
+    )
+    assert result.exit_code == 1, result.output
+    assert "pre_affinity_*.npz missing): case1" in result.output
+    assert calls == ["structure"]
+    assert (output / "case0" / "saved.cif").exists()
+    assert (output / "case1" / "saved.cif").exists()
 
 
 @pytest.mark.parametrize("model_class", [Boltz1, Boltz2])

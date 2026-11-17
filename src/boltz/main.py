@@ -1884,7 +1884,11 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         # Print header
         click.echo("\nPredicting property: affinity\n")
 
-        manifest_affinity = expand_affinity_records(manifest)
+        # Use original requests: skipped structures may still need affinity,
+        # while structure-only records must never enter the affinity loader.
+        manifest_affinity = expand_affinity_records(
+            Manifest([r for r in manifest.records if r.affinity is not None])
+        )
 
         # Validate inputs
         manifest_filtered = filter_inputs_affinity(
