@@ -424,13 +424,23 @@ class AbsDihedralPotential(DihedralPotential):
         return phi, grad
 
 
+_CONNECTION_GUIDANCE_WEIGHT = 0.15
+_POSEBUSTERS_GUIDANCE_WEIGHT = 0.01
+_INTRACHAIN_GEOMETRY_WEIGHT = _CONNECTION_GUIDANCE_WEIGHT - _POSEBUSTERS_GUIDANCE_WEIGHT
+
+
 class PoseBustersPotential(FlatBottomPotential, DistancePotential):
     def compute_args(self, feats, parameters):
-        pair_index = feats["rdkit_bounds_index"][0]
-        lower_bounds = feats["rdkit_lower_bounds"][0].clone()
-        upper_bounds = feats["rdkit_upper_bounds"][0].clone()
-        bond_mask = feats["rdkit_bounds_bond_mask"][0]
-        angle_mask = feats["rdkit_bounds_angle_mask"][0]
+        guidance_only = feats.get("rdkit_bounds_guidance_only_mask")
+        ordinary = slice(None) if guidance_only is None else ~guidance_only[0]
+        return self._compute_selected_args(feats, parameters, ordinary)
+
+    def _compute_selected_args(self, feats, parameters, selected):
+        pair_index = feats["rdkit_bounds_index"][0][:, selected]
+        lower_bounds = feats["rdkit_lower_bounds"][0, selected].clone()
+        upper_bounds = feats["rdkit_upper_bounds"][0, selected].clone()
+        bond_mask = feats["rdkit_bounds_bond_mask"][0, selected]
+        angle_mask = feats["rdkit_bounds_angle_mask"][0, selected]
 
         lower_bounds[bond_mask * ~angle_mask] *= 1.0 - parameters["bond_buffer"]
         upper_bounds[bond_mask * ~angle_mask] *= 1.0 + parameters["bond_buffer"]
@@ -474,18 +484,18 @@ class IntraChainGeometryPotential(PoseBustersPotential):
             return index, (empty, empty, empty), None, None, None
 
         indices = indices[0]
-        selected = dict(feats)
-        selected["rdkit_bounds_index"] = feats["rdkit_bounds_index"].index_select(
-            -1, indices
+        index, (k, lower, upper), com, ref, operators = self._compute_selected_args(
+            feats, parameters, indices
         )
-        for name in (
-            "rdkit_lower_bounds",
-            "rdkit_upper_bounds",
-            "rdkit_bounds_bond_mask",
-            "rdkit_bounds_angle_mask",
-        ):
-            selected[name] = feats[name].index_select(-1, indices)
-        return super().compute_args(selected, parameters)
+        guidance_only = feats.get("rdkit_bounds_guidance_only_mask")
+        if guidance_only is not None:
+            # Peptide priors get the full guidance weight here because the base
+            # potential leaves them out of both its guidance and FK energy.
+            k = k.masked_fill(
+                guidance_only[0, indices],
+                _CONNECTION_GUIDANCE_WEIGHT / _INTRACHAIN_GEOMETRY_WEIGHT,
+            )
+        return index, (k, lower, upper), com, ref, operators
 
 
 class ConnectionsPotential(FlatBottomPotential, DistancePotential):
@@ -774,7 +784,7 @@ def get_potentials(steering_args, boltz2=False):
                 ConnectionsPotential(
                     parameters={
                         "guidance_interval": 1,
-                        "guidance_weight": 0.15
+                        "guidance_weight": _CONNECTION_GUIDANCE_WEIGHT
                         if steering_args["physical_guidance_update"]
                         else 0.0,
                         "resampling_weight": 1.0,
@@ -784,7 +794,7 @@ def get_potentials(steering_args, boltz2=False):
                 PoseBustersPotential(
                     parameters={
                         "guidance_interval": 1,
-                        "guidance_weight": 0.01
+                        "guidance_weight": _POSEBUSTERS_GUIDANCE_WEIGHT
                         if steering_args["physical_guidance_update"]
                         else 0.0,
                         "resampling_weight": 0.1,
@@ -832,7 +842,7 @@ def get_potentials(steering_args, boltz2=False):
                     "guidance_interval": 1,
                     # Together with the existing 0.01 geometry update, give
                     # these bounds the same 0.15 weight as bond closure.
-                    "guidance_weight": 0.14,
+                    "guidance_weight": _INTRACHAIN_GEOMETRY_WEIGHT,
                     "resampling_weight": 0.0,
                     "bond_buffer": 0.125,
                     "angle_buffer": 0.125,

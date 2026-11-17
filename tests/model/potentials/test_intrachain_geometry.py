@@ -247,3 +247,55 @@ def test_extra_geometry_is_gated_and_balances_connection_force(boltz2, physical)
         assert normal.parameters["guidance_weight"] + extras[0].parameters[
             "guidance_weight"
         ] == pytest.approx(closure.parameters["guidance_weight"])
+
+
+def test_peptide_prior_changes_guidance_without_changing_fk_energy():
+    legacy = {
+        "ref_element": torch.nn.functional.one_hot(
+            torch.tensor([[6, 6, 6, 7]]), const.num_elements
+        ),
+        "rdkit_bounds_index": torch.tensor([[[0], [1]]]),
+        "rdkit_lower_bounds": torch.tensor([[1.4]]),
+        "rdkit_upper_bounds": torch.tensor([[1.5]]),
+        "rdkit_bounds_bond_mask": torch.tensor([[True]]),
+        "rdkit_bounds_angle_mask": torch.tensor([[False]]),
+    }
+    with_prior = {
+        **legacy,
+        "rdkit_bounds_index": torch.tensor([[[0, 2], [1, 3]]]),
+        "rdkit_lower_bounds": torch.tensor([[1.4, 1.3]]),
+        "rdkit_upper_bounds": torch.tensor([[1.5, 1.4]]),
+        "rdkit_bounds_bond_mask": torch.tensor([[True, True]]),
+        "rdkit_bounds_angle_mask": torch.tensor([[False, False]]),
+        "rdkit_bounds_guidance_only_mask": torch.tensor([[False, True]]),
+        "intrachain_covalent_bound_indices": torch.tensor([[0, 1]]),
+    }
+    xyz = torch.tensor(
+        [[[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [5.0, 0.0, 0.0], [7.0, 0.0, 0.0]]]
+    )
+    potentials = get_potentials(
+        {
+            "physical_guidance_update": True,
+            "fk_steering": True,
+            "contact_guidance_update": False,
+        },
+        boltz2=True,
+    )
+    base = next(p for p in potentials if type(p) is PoseBustersPotential)
+    extra = next(p for p in potentials if type(p) is IntraChainGeometryPotential)
+    base_params, extra_params = (p.compute_parameters(0.5) for p in (base, extra))
+    torch.testing.assert_close(
+        base.compute(xyz, with_prior, base_params),
+        base.compute(xyz, legacy, base_params),
+        rtol=0,
+        atol=0,
+    )
+    base_grad = base.compute_gradient(xyz, with_prior, base_params)
+    assert torch.count_nonzero(base_grad[:, 2:]) == 0
+    combined = base_params["guidance_weight"] * base_grad + extra_params[
+        "guidance_weight"
+    ] * extra.compute_gradient(xyz, with_prior, extra_params)
+    # Both stretched bonds get the same restoring force.
+    torch.testing.assert_close(
+        combined[0, :, 0], torch.tensor([-0.15, 0.15, -0.15, 0.15])
+    )
