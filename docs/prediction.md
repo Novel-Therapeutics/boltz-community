@@ -278,7 +278,10 @@ Each output folder includes a confidence `.json` file with aggregated confidence
 }
 ```
 `chain_ids` maps confidence indices to original input chain labels for both
-Boltz-1 and Boltz-2, after invalid chains are removed and indices reassigned.
+Boltz-1 and Boltz-2. Invalid chains are omitted, while surviving chains retain
+their original confidence indices. For example, removing chain B from A/B/C
+leaves `chain_ids` as `{"0": "A", "2": "C"}`. Coordinate output may renumber
+the surviving chains independently.
 Numeric keys in `chains_ptm`, `pair_chains_iptm`, and the per-chain PAE summaries
 are preserved. JSON keys are strings: `chain_ids["1"]` identifies chain `"1"`
 in those summaries. Native PDB/mmCIF chain names and coordinates are unchanged.
@@ -297,7 +300,7 @@ Two caveats when using the unweighted values for binder screening:
   pae_interaction  = ( binder_to_target + target_to_binder ) / 2
   ```
 
-  With a single target chain this is `(pair_chains_pae_unweighted[b][t] + pair_chains_pae_unweighted[t][b]) / 2`. A protein chain has one token per residue; a ligand has one token per atom. The weighting by `n_t` is exact when no tokens are excluded for lacking a valid frame, which is the normal case for proteins; otherwise compute the blocks directly from the full matrix in `pae_*.npz`. Chain indices are the order of chains in the predicted structure file. They are not always the input order, because chains with identical sequences are grouped together.
+  With a single target chain this is `(pair_chains_pae_unweighted[b][t] + pair_chains_pae_unweighted[t][b]) / 2`. A protein chain has one token per residue; a ligand has one token per atom. The weighting by `n_t` is exact when no tokens are excluded for lacking a valid frame, which is the normal case for proteins; otherwise compute the blocks directly from the full matrix in `pae_*.npz`. Use `chain_ids` to resolve the confidence indices to input labels. Confidence indices need not be contiguous after invalid-chain removal and may differ from the indices in coordinate output. Chains with identical sequences are grouped together, so these indices do not always follow input order.
 - **The same averaging does not make a published threshold valid for Boltz.** Cutoffs such as `pae_interaction < 10` were calibrated on AlphaFold2's PAE. Boltz predicts its own PAE, and those cutoffs have not been validated on it. Treat them as a starting point and calibrate on your own data.
 
 Both sets exclude padding and the diagonal. The unweighted values also exclude tokens without a valid frame on the aligned axis, as pTM and ipTM do, and match the definition proposed for upstream Boltz in [jwohlwend/boltz#707](https://github.com/jwohlwend/boltz/pull/707). `pair_chains_pae[i][j]` is the error of chain `j` when the structure is aligned on chain `i`, so it is not symmetric. Fields with no valid token pairs are written as `null`.

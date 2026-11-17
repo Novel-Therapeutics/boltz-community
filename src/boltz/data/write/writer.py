@@ -195,9 +195,15 @@ class BoltzWriter(BasePredictionWriter):
 
             # Compute chain map with masked removed, to be used later
             chain_map = {}
+            # Confidence uses the original token asym_id, while coordinate
+            # cleanup below assigns dense chain IDs to the surviving chains.
+            chain_ids = {}
             for i, mask in enumerate(structure.mask):
                 if mask:
                     chain_map[len(chain_map)] = i
+                    chain_ids[int(structure.chains[i]["asym_id"])] = (
+                        record.chains[i].chain_name
+                    )
 
             # Remove masked chains completely
             structure = structure.remove_invalid_chains()
@@ -317,11 +323,7 @@ class BoltzWriter(BasePredictionWriter):
                         }
                         for idx1 in pair_chains
                     }
-                    # Chain indices are reassigned after invalid-chain removal.
-                    # Retain numeric score keys and expose the original labels.
-                    confidence_summary_dict["chain_ids"] = {
-                        chain.chain_id: chain.chain_name for chain in chain_info
-                    }
+                    confidence_summary_dict["chain_ids"] = chain_ids
                     if "complex_pae" in prediction:
                         confidence_summary_dict["complex_pae"] = _select_prediction_value(
                             prediction["complex_pae"], start + model_idx

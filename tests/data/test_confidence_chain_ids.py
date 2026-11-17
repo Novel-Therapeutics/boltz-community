@@ -18,6 +18,7 @@ from boltz.data.types import (
     Connection,
     Coords,
     Ensemble,
+    Input,
     Interface,
     Record,
     Residue,
@@ -50,17 +51,18 @@ def write_case(
     confidence=True,
     batch_size=1,
     native_labels=None,
+    use_tokenizer=False,
 ):
     count = len(mask)
     if labels is None:
         labels = [chr(65 + i) for i in range(count)]
     atoms = np.zeros(count, dtype=AtomV2 if boltz2 else Atom)
     atoms["is_present"] = True
+    atoms["element"] = 6
     if boltz2:
         atoms["name"] = "CA"
     else:
         atoms["name"] = (ord("C") - 32, ord("A") - 32, 0, 0)
-        atoms["element"] = 6
     residues = np.zeros(count, dtype=Residue)
     chains = np.zeros(count, dtype=Chain)
     for i in range(count):
@@ -77,6 +79,11 @@ def write_case(
         chains[i]["entity_id"] = 0  # Identical sequences are copies of one entity.
         chains[i]["res_idx"] = chains[i]["atom_idx"] = i
         chains[i]["res_num"] = chains[i]["atom_num"] = 1
+    if use_tokenizer:
+        # One-atom ligands exercise both real tokenizers without protein frames.
+        chains["mol_type"] = const.chain_type_ids["NONPOLYMER"]
+        residues["name"] = "LIG"
+        residues["is_standard"] = False
     common = dict(
         atoms=atoms,
         residues=residues,
@@ -120,6 +127,14 @@ def write_case(
             )
         )
     valid = sum(mask)
+    score_ids = np.flatnonzero(mask).tolist()
+    if use_tokenizer:
+        from boltz.data.tokenize.boltz import BoltzTokenizer
+        from boltz.data.tokenize.boltz2 import Boltz2Tokenizer
+
+        tokenizer = Boltz2Tokenizer() if boltz2 else BoltzTokenizer()
+        tokens = tokenizer.tokenize(Input(structure, {}, record)).tokens
+        score_ids = [int(i) for i in np.unique(tokens["asym_id"])]
     # Two samples with reversed ranks catch accidental label/ranking coupling.
     samples = 2 * batch_size
     coords = torch.arange(samples * valid * 3, dtype=torch.float32).reshape(
@@ -137,19 +152,19 @@ def write_case(
         prediction.update({key: values.clone() for key in SCALARS})
         prediction["plddt"] = torch.full((samples, valid), 0.9)
         prediction["pair_chains_iptm"] = {
-            i: {j: torch.arange(samples) * 0.5 + i / 10 + j / 100 for j in range(valid)}
-            for i in range(valid)
+            i: {j: torch.arange(samples) * 0.5 + i / 10 + j / 100 for j in score_ids}
+            for i in score_ids
         }
         for suffix in ("", "_unweighted"):
             prediction[f"complex_pae{suffix}"] = values + 1
             prediction[f"complex_ipae{suffix}"] = values + 2
-            prediction[f"chains_pae{suffix}"] = {i: values + i for i in range(valid)}
+            prediction[f"chains_pae{suffix}"] = {i: values + i for i in score_ids}
             prediction[f"pair_chains_pae{suffix}"] = {
-                i: {j: values + i + j for j in range(valid)} for i in range(valid)
+                i: {j: values + i + j for j in score_ids} for i in score_ids
             }
             # Undefined summaries must retain the fork's null serialization.
-            prediction[f"pair_chains_pae{suffix}"][0][0] = torch.full(
-                (samples,), float("nan")
+            prediction[f"pair_chains_pae{suffix}"][score_ids[0]][score_ids[0]] = (
+                torch.full((samples,), float("nan"))
             )
         prediction.update({key: torch.arange(samples) for key in CHECK_KEYS})
         prediction["pae"] = (
@@ -175,7 +190,7 @@ def test_confidence_maps_reindexed_chains_and_preserves_all_scores(
     for sample, rank in [(0, 1), (1, 0)]:
         summary = json.loads((output / f"confidence_toy_model_{rank}.json").read_text())
         assert summary.pop("chain_ids") == {
-            str(i): name for i, name in enumerate(names)
+            str(i): name for i, name in zip(np.flatnonzero(mask), names)
         }
         pairs = {
             str(i): {str(j): value[sample].item() for j, value in row.items()}
@@ -239,8 +254,8 @@ def test_batch_ranks_keep_labels_scores_and_coordinates_together(
                 (folder / f"confidence_{record}_model_{rank}.json").read_text()
             )
             assert summary["chain_ids"] == {
-                "0": f"{prefix}binder_alias",
-                "1": f"{prefix}target_alias",
+                "1": f"{prefix}binder_alias",
+                "3": f"{prefix}target_alias",
             }
             assert (
                 summary["confidence_score"]
@@ -248,7 +263,7 @@ def test_batch_ranks_keep_labels_scores_and_coordinates_together(
             )
             assert summary["chains_ptm"] == {
                 str(i): prediction["pair_chains_iptm"][i][i][sample].item()
-                for i in range(2)
+                for i in (1, 3)
             }
             for key, value in extra_summary(prediction, sample).items():
                 assert summary[key] == value
@@ -306,6 +321,25 @@ def test_pdb_aliases_do_not_replace_original_confidence_labels(tmp_path, boltz2)
             native_labels=labels,
         )
     summary = json.loads((output / "confidence_toy_model_0.json").read_text())
-    assert summary["chain_ids"] == {"0": "L1", "1": "A", "2": "L2"}
+    assert summary["chain_ids"] == {"1": "L1", "2": "A", "3": "L2"}
     parsed = gemmi.read_structure(str(output / "toy_model_0.pdb"))
     assert [chain.name for chain in parsed[0]] == ["B", "A", "C"]
+
+
+@pytest.mark.parametrize("boltz2", [False, True])
+@pytest.mark.parametrize("output_format", ["pdb", "mmcif"])
+@pytest.mark.parametrize("mask", [[True, False, True], [False, True, True]])
+def test_confidence_labels_follow_actual_tokenizer_indices(
+    tmp_path, boltz2, output_format, mask
+):
+    output, prediction, _ = write_case(
+        tmp_path, boltz2, output_format, mask, use_tokenizer=True
+    )
+    summary = json.loads((output / "confidence_toy_model_0.json").read_text())
+    assert summary["chain_ids"] == {
+        str(i): chr(65 + i) for i, kept in enumerate(mask) if kept
+    }
+    assert set(summary["chain_ids"]) == set(summary["chains_ptm"])
+    assert summary["chains_ptm"] == {
+        str(i): row[i][1].item() for i, row in prediction["pair_chains_iptm"].items()
+    }
