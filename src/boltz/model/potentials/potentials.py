@@ -63,20 +63,20 @@ class Potential(ABC):
         )
 
         if index.shape[1] == 0:
-            return torch.zeros(coords.shape[:-2], device=coords.device)
+            return coords.new_zeros(coords.shape[:-2])
 
         if com_args is not None:
             com_index, atom_pad_mask = com_args
             unpad_com_index = com_index[atom_pad_mask]
             unpad_coords = coords[..., atom_pad_mask, :]
-            coords = torch.zeros(
+            coords = coords.new_zeros(
                 (*unpad_coords.shape[:-2], unpad_com_index.max() + 1, 3),
-                device=coords.device,
             ).scatter_reduce(
                 -2,
                 unpad_com_index.unsqueeze(-1).expand_as(unpad_coords),
                 unpad_coords,
                 "mean",
+                include_self=False,
             )
         else:
             com_index, atom_pad_mask = None, None
@@ -130,16 +130,16 @@ class Potential(ABC):
             com_index, atom_pad_mask = com_args
             unpad_coords = coords[..., atom_pad_mask, :]
             unpad_com_index = com_index[atom_pad_mask]
-            coords = torch.zeros(
+            coords = coords.new_zeros(
                 (*unpad_coords.shape[:-2], unpad_com_index.max() + 1, 3),
-                device=coords.device,
             ).scatter_reduce(
                 -2,
                 unpad_com_index.unsqueeze(-1).expand_as(unpad_coords),
                 unpad_coords,
                 "mean",
+                include_self=False,
             )
-            com_counts = torch.bincount(com_index[atom_pad_mask])
+            com_counts = torch.bincount(unpad_com_index)
         else:
             com_index, atom_pad_mask = None, None
 
@@ -223,7 +223,16 @@ class Potential(ABC):
             )
 
         if com_index is not None:
-            grad_atom = grad_atom[..., com_index, :]
+            # Only valid atoms contribute to the mean or receive its gradient.
+            # Padding may map to absent chains, including IDs outside the COM tensor.
+            grad_unpad = (
+                grad_atom[..., unpad_com_index, :]
+                / com_counts[unpad_com_index].unsqueeze(-1)
+            )
+            grad_atom = grad_atom.new_zeros(
+                (*grad_atom.shape[:-2], com_index.shape[0], 3)
+            )
+            grad_atom[..., atom_pad_mask, :] = grad_unpad
         elif ref_token_index is not None:
             grad_atom = grad_atom[..., ref_token_index, :]
 
@@ -337,11 +346,13 @@ class DistancePotential(Potential):
     ):
         r_ij = coords.index_select(-2, index[0]) - coords.index_select(-2, index[1])
         r_ij_norm = torch.linalg.norm(r_ij, dim=-1)
-        r_hat_ij = r_ij / r_ij_norm.unsqueeze(-1)
 
         if not compute_gradient:
             return r_ij_norm
 
+        # Match autograd's zero gradient at coincident atoms or chain centers.
+        safe_norm = r_ij_norm.masked_fill(r_ij_norm == 0, 1)
+        r_hat_ij = r_ij / safe_norm.unsqueeze(-1)
         grad_i = r_hat_ij
         grad_j = -1 * r_hat_ij
         grad = torch.stack((grad_i, grad_j), dim=1)
