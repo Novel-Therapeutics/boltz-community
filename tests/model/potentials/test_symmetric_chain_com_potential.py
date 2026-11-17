@@ -51,6 +51,7 @@ def test_known_centers_and_chain_rule(dtype: torch.dtype) -> None:
 @pytest.mark.parametrize("chain_ids", [(0, 1), (2, 5)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("padding", ["unmapped", "existing_chain", "absent_chain"])
+@torch.enable_grad()
 def test_gradient_matches_autograd(
     multiplicity: int,
     chain_ids: tuple[int, int],
@@ -151,6 +152,7 @@ def test_no_pairs_returns_zero(dtype: torch.dtype) -> None:
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@torch.enable_grad()
 def test_coincident_centers_match_autograd(dtype: torch.dtype) -> None:
     """Unequal chains with identical centers must not inject NaNs into guidance."""
     feats = _features((2, 5), "absent_chain")
@@ -172,6 +174,7 @@ def test_coincident_centers_match_autograd(dtype: torch.dtype) -> None:
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@torch.enable_grad()
 def test_near_coincident_centers_keep_unit_distance_gradient(
     dtype: torch.dtype,
 ) -> None:
