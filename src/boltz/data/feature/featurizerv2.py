@@ -2218,9 +2218,9 @@ def process_residue_constraint_features(data: Tokenized) -> dict[str, Tensor]:
         planar_ring_5_index = torch.empty((5, 0), dtype=torch.long)
         planar_ring_6_index = torch.empty((6, 0), dtype=torch.long)
 
-    # A newly guided intra-chain link must not pull apart the modified
-    # residues in that chain. Select their existing geometry bounds for an
-    # additional guidance term; unrelated chains retain their usual weight.
+    # Strengthen existing bonds and angles to protect the linked chain from
+    # stretching. A new link can bring previously nonbonded atoms close,
+    # so their reference clash bounds keep their original weight.
     intrachain_covalent_bounds_mask = np.zeros(rdkit_bounds_index.shape[1], dtype=bool)
     guidance_only_mask = torch.zeros(rdkit_bounds_index.shape[1], dtype=torch.bool)
     bonds = data.structure.bonds
@@ -2245,6 +2245,9 @@ def process_residue_constraint_features(data: Tokenized) -> dict[str, Tensor]:
             intrachain_covalent_bounds_mask |= (
                 (bound_atoms >= start) & (bound_atoms < end)
             ).all(axis=0)
+    intrachain_covalent_bounds_mask &= (
+        rdkit_bounds_bond_mask | rdkit_bounds_angle_mask
+    ).numpy()
 
     # The fork already stores explicit YAML closure bounds for geometry checks.
     # Keep those bounds at their existing weight: the extra term protects the

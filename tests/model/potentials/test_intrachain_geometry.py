@@ -47,6 +47,7 @@ def constraint_input(bonds):
                 ((1, 2), True, False, 1.52, 1.48),
                 ((4, 5), True, False, 1.52, 1.48),
                 ((0, 2), False, True, 2.6, 2.4),
+                ((0, 3), False, False, 4.0, 2.6),
             ],
             dtype=RDKitBoundsConstraint,
         ),
@@ -102,9 +103,21 @@ def test_parser_closure_bounds_remain_available_without_extra_closure_force():
     """The fork's existing explicit-bond bounds still feed structure checks."""
     data = constraint_input([(2, 2, 0, 1, 0, 2, COVALENT)])
     feats = process_residue_constraint_features(data)
-    assert feats["rdkit_bounds_index"].T.tolist() == [[0, 1], [1, 2], [4, 5], [0, 2]]
+    assert feats["rdkit_bounds_index"].T.tolist() == [
+        [0, 1],
+        [1, 2],
+        [4, 5],
+        [0, 2],
+        [0, 3],
+    ]
     assert feats["intrachain_covalent_bound_indices"].tolist() == [0, 1]
-    assert feats["rdkit_bounds_angle_mask"].tolist() == [False, False, False, True]
+    assert feats["rdkit_bounds_angle_mask"].tolist() == [
+        False,
+        False,
+        False,
+        True,
+        False,
+    ]
 
 
 def test_removed_closure_does_not_strengthen_geometry_in_retained_fragment():

@@ -301,3 +301,69 @@ def test_yaml_to_featurizer_to_guidance_with_modified_residues(tmp_path, crop):
         ).sum()
     )
     assert feats["rdkit_bounds_guidance_only_mask"].sum() == 1  # Adjacent C--N prior.
+
+
+def test_ring_closure_guidance_overcomes_open_reference_clash_bounds(tmp_path):
+    """The open reference's nonbonded bounds must not get the geometry boost."""
+    from boltz.data.feature.featurizerv2 import Boltz2Featurizer
+    from boltz.data.parse.schema import parse_boltz_schema
+    from boltz.data.tokenize.boltz2 import Boltz2Tokenizer
+    from boltz.data.types import Input
+    from boltz.model.potentials.potentials import (
+        IntraChainGeometryPotential,
+        PoseBustersPotential,
+        get_potentials,
+    )
+
+    names = [f"C{i + 1}" for i in range(9)]
+    molecules = {"CAR": _named_molecule("C" * len(names), names)}
+    schema = {
+        "sequences": [{"ligand": {"id": "A", "ccd": "CAR"}}],
+        "constraints": [
+            {"bond": {"atom1": ["A", 1, names[0]], "atom2": ["A", 1, names[-1]]}}
+        ],
+    }
+    target = parse_boltz_schema(
+        tmp_path / "ring.yaml", schema, molecules, tmp_path, boltz_2=True
+    )
+    data = Boltz2Tokenizer().tokenize(
+        Input(target.structure, {}, target.record, target.residue_constraints)
+    )
+    feats = Boltz2Featurizer().process(
+        data,
+        np.random.default_rng(1),
+        molecules,
+        training=False,
+        max_seqs=1,
+        compute_constraint_features=True,
+    )
+    xyz = torch.zeros(1, len(feats["ref_element"]), 3)
+    atom_indices = [list(target.structure.atoms["name"]).index(name) for name in names]
+    angles = torch.arange(len(names), dtype=xyz.dtype) * (2 * torch.pi / len(names))
+    radius = 1.54 / (2 * np.sin(np.pi / len(names)))
+    xyz[0, atom_indices, 0] = angles.cos() * radius
+    xyz[0, atom_indices, 1] = angles.sin() * radius
+    a, b = feats["connected_atom_index"][:, 0]
+    direction = torch.nn.functional.normalize(xyz[:, a] - xyz[:, b])
+    xyz[:, a] += (1.80 - 1.54) / 2 * direction
+    xyz[:, b] -= (1.80 - 1.54) / 2 * direction
+
+    potentials = get_potentials(
+        {
+            "fk_steering": True,
+            "physical_guidance_update": True,
+            "contact_guidance_update": False,
+        },
+        boltz2=True,
+    )
+    batched = {k: v[None] for k, v in feats.items()}
+    combined = torch.zeros_like(xyz)
+    affected = (ConnectionsPotential, PoseBustersPotential, IntraChainGeometryPotential)
+    for potential in potentials:
+        if type(potential) in affected:
+            params = potential.compute_parameters(0.5)
+            combined += params["guidance_weight"] * potential.compute_gradient(
+                xyz, batched, params
+            )
+    # A descent step on the three affected terms must shorten the stretched link.
+    assert ((combined[:, a] - combined[:, b]) * direction).sum().item() > 0
