@@ -8,13 +8,12 @@ import tarfile
 import warnings
 from dataclasses import asdict, dataclass, replace
 from functools import partial
+from importlib.metadata import version as _pkg_version
 from multiprocessing import Pool
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 import click
-
-from importlib.metadata import version as _pkg_version
 
 try:
     from pytorch_lightning.utilities import rank_zero_only
@@ -571,19 +570,18 @@ def filter_inputs_affinity(
         msg = "Found existing affinity predictions, will override."
         click.echo(msg)
 
-    # Skip records whose structure prediction failed (no pre_affinity npz)
+    # Existing affinity outputs have already been removed above. Any remaining
+    # request needs its structure input; do not report an incomplete run as success.
     missing = [
         r for r in manifest.records
         if r.affinity
         and not (pred_dir / r.id / f"pre_affinity_{r.id}.npz").exists()
     ]
     if missing:
-        missing_ids = {r.id for r in missing}
-        manifest = Manifest([r for r in manifest.records if r.id not in missing_ids])
-        click.echo(
-            f"Warning: {len(missing)} record(s) requested affinity but have no "
-            f"structure prediction (pre_affinity_*.npz missing). Skipping: "
-            f"{', '.join(r.id for r in missing)}"
+        raise click.ClickException(
+            f"{len(missing)} affinity target(s) have no structure prediction "
+            f"(pre_affinity_*.npz missing): {', '.join(r.id for r in missing)}. "
+            "Successful outputs were kept. Fix the missing inputs before continuing."
         )
 
     return manifest
@@ -1451,7 +1449,11 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     from boltz.data.module.inference import BoltzInferenceDataModule
     from boltz.data.module.inferencev2 import Boltz2InferenceDataModule
     from boltz.data.types import Manifest
-    from boltz.data.write.writer import BoltzAffinityWriter, BoltzWriter
+    from boltz.data.write.writer import (
+        BoltzAffinityWriter,
+        BoltzWriter,
+        PredictionError,
+    )
     from boltz.model.models.boltz1 import Boltz1
     from boltz.model.models.boltz2 import Boltz2
 
@@ -1666,6 +1668,13 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             )
 
     # Set up trainer
+    # Resolve Lightning's all-visible-GPUs shorthand before selecting DDP, so
+    # its per-phase record limit also applies to --devices -1. Leave non-CUDA
+    # accelerator selection and unavailable-device errors to Lightning.
+    if accelerator == "gpu" and devices == -1:
+        available_devices = torch.cuda.device_count()
+        if available_devices:
+            devices = available_devices
     strategy = "auto"
     if accelerator == "mps":
         # MPS only supports single-device, float32
@@ -1688,17 +1697,6 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     ):
         start_method = "fork" if platform.system() != "win32" and platform.system() != "Windows" else "spawn"
         strategy = DDPStrategy(start_method=start_method)
-        device_count = len(devices) if isinstance(devices, list) else devices
-        if len(filtered_manifest.records) < device_count:
-            msg = (
-                "Number of requested devices is greater "
-                "than the number of predictions, taking the minimum."
-            )
-            click.echo(msg)
-            if isinstance(devices, list):
-                devices = devices[: max(1, len(filtered_manifest.records))]
-            else:
-                devices = max(1, min(len(filtered_manifest.records), devices))
 
     # Set up model parameters
     if model == "boltz2":
@@ -1744,15 +1742,33 @@ def predict(  # noqa: C901, PLR0915, PLR0912
 
         precision_args = {"plugins": [MixedPrecision("bf16-mixed", device="xpu")]}
 
-    # Set up trainer
-    trainer = Trainer(
-        default_root_dir=out_dir,
-        strategy=strategy,
-        callbacks=[pred_writer],
-        accelerator=accelerator,
-        devices=devices,
-        **precision_args,
-    )
+    def create_trainer(writer, record_count):
+        # Affinity expansion and skip-existing filtering can change the number
+        # of records. Size each phase independently so no rank has an empty
+        # prediction shard (and misses the writer's end-of-phase collective).
+        phase_devices = devices
+        phase_strategy = strategy
+        if isinstance(strategy, DDPStrategy):
+            phase_strategy = DDPStrategy(start_method=start_method)
+            device_count = len(devices) if isinstance(devices, list) else devices
+            if record_count < device_count:
+                click.echo(
+                    "Number of requested devices is greater than the number of "
+                    "predictions, taking the minimum."
+                )
+                phase_devices = (
+                    devices[:record_count] if isinstance(devices, list) else record_count
+                )
+        elif accelerator == "xpu":
+            phase_strategy = SingleDeviceStrategy(device=torch.device("xpu", xpu_index))
+        return Trainer(
+            default_root_dir=out_dir,
+            strategy=phase_strategy,
+            callbacks=[writer],
+            accelerator=accelerator,
+            devices=phase_devices,
+            **precision_args,
+        )
 
     # Lightning constructs the model on CPU before loading its state dict. If
     # checkpoint tensors are deserialized directly onto the accelerator,
@@ -1839,11 +1855,15 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         model_module.eval()
 
         # Compute structure predictions
-        trainer.predict(
-            model_module,
-            datamodule=data_module,
-            return_predictions=False,
-        )
+        trainer = create_trainer(pred_writer, len(filtered_manifest.records))
+        try:
+            trainer.predict(
+                model_module,
+                datamodule=data_module,
+                return_predictions=False,
+            )
+        except PredictionError as error:
+            raise click.ClickException(str(error)) from error
 
         if pred_writer.models_failing_checks:
             hint = (
@@ -1859,19 +1879,16 @@ def predict(  # noqa: C901, PLR0915, PLR0912
                 + hint
             )
 
-        if pred_writer.failed:
-            click.echo(
-                f"\nWarning: {pred_writer.failed} structure prediction(s) failed "
-                f"(e.g. out of memory). Affinity predictions for those records "
-                f"will be skipped."
-            )
-
     # Check if affinity predictions are needed
     if any(r.affinity for r in manifest.records):
         # Print header
         click.echo("\nPredicting property: affinity\n")
 
-        manifest_affinity = expand_affinity_records(manifest)
+        # Use original requests: skipped structures may still need affinity,
+        # while structure-only records must never enter the affinity loader.
+        manifest_affinity = expand_affinity_records(
+            Manifest([r for r in manifest.records if r.affinity is not None])
+        )
 
         # Validate inputs
         manifest_filtered = filter_inputs_affinity(
@@ -1948,12 +1965,15 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         )
         model_module.eval()
 
-        trainer.callbacks[0] = pred_writer
-        trainer.predict(
-            model_module,
-            datamodule=data_module,
-            return_predictions=False,
-        )
+        trainer = create_trainer(pred_writer, len(manifest_filtered.records))
+        try:
+            trainer.predict(
+                model_module,
+                datamodule=data_module,
+                return_predictions=False,
+            )
+        except PredictionError as error:
+            raise click.ClickException(str(error)) from error
 
 
 if __name__ == "__main__":

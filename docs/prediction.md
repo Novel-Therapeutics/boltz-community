@@ -492,6 +492,16 @@ N[C@@H](Cc1ccc(O)cc1)C(=O)O
 
 ## Troubleshooting
 
+If any input fails during structure or affinity prediction (including a caught
+out-of-memory error), `boltz predict` exits nonzero after the current prediction
+phase. Successful outputs from that phase are kept. Failed batches count every
+record, and failures are summed across distributed workers, including workers
+without local failures. A failed structure phase stops before affinity prediction.
+Missing required `pre_affinity_*.npz` inputs also cause a nonzero exit before
+affinity loading; existing affinity results are still skipped unless `--override`
+is set. A fully successful run, including one that skips completed predictions,
+exits zero.
+
  - Denoiser conditioning caching is opt-in: set `BOLTZ_DENOISER_CACHE=on` to enable it, or `off` to disable it (the default). Boolean aliases `true/false` and `1/0` are accepted. Invalid values are rejected at prediction startup on both CPU and GPU. See [denoiser caching](denoiser-cache.md) for scope and memory limits.
  - If the FlashPairformer kernels from `opt_core` misbehave, set `BOLTZ_FLASHPAIRFORMER=off` to go back to the `cuequivariance` kernels while keeping them enabled.
  - A FlashPairformer kernel error disables that route for the rest of the process. Restart the process to retry it; changing `BOLTZ_FLASHPAIRFORMER` does not reset the failure. Out-of-memory errors still propagate.
