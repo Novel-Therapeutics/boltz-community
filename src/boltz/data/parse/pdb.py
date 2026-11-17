@@ -1,8 +1,11 @@
-from typing import Optional
-from rdkit.Chem.rdchem import Mol
-import gemmi
 from tempfile import NamedTemporaryFile
-from boltz.data.parse.mmcif import parse_mmcif, ParsedStructure
+from typing import Optional
+
+import gemmi
+from rdkit.Chem.rdchem import Mol
+
+from boltz.data.parse.mmcif import ParsedStructure, parse_mmcif
+
 
 def parse_pdb(
     path: str,
@@ -17,15 +20,19 @@ def parse_pdb(
         structure.setup_entities()
 
         subchain_counts, subchain_renaming = {}, {}
-        for chain in structure[0]:
-            subchain_counts[chain.name] = 0
-            for res in chain:
-                if res.subchain not in subchain_renaming:
-                    subchain_renaming[res.subchain] = chain.name + str(subchain_counts[chain.name] + 1)
-                    subchain_counts[chain.name] += 1
-                res.subchain = subchain_renaming[res.subchain]
+        # All models must use the same subchain IDs as the entity metadata.
+        for model in structure:
+            for chain in model:
+                for res in chain:
+                    if res.subchain not in subchain_renaming:
+                        count = subchain_counts.get(chain.name, 0) + 1
+                        subchain_counts[chain.name] = count
+                        subchain_renaming[res.subchain] = chain.name + str(count)
+                    res.subchain = subchain_renaming[res.subchain]
         for entity in structure.entities:
-            entity.subchains = [subchain_renaming[subchain] for subchain in entity.subchains]
+            entity.subchains = [
+                subchain_renaming[subchain] for subchain in entity.subchains
+            ]
 
         doc = structure.make_mmcif_document()
         doc.write_file(tmp_cif_path)
@@ -35,5 +42,5 @@ def parse_pdb(
             mols=mols,
             moldir=moldir,
             use_assembly=use_assembly,
-            compute_interfaces=compute_interfaces
+            compute_interfaces=compute_interfaces,
         )
