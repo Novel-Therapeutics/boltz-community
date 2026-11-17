@@ -63,7 +63,7 @@ class Potential(ABC):
         )
 
         if index.shape[1] == 0:
-            return torch.zeros(coords.shape[:-2], device=coords.device)
+            return coords.new_zeros(coords.shape[:-2])
 
         if com_args is not None:
             com_index, atom_pad_mask = com_args
@@ -346,11 +346,13 @@ class DistancePotential(Potential):
     ):
         r_ij = coords.index_select(-2, index[0]) - coords.index_select(-2, index[1])
         r_ij_norm = torch.linalg.norm(r_ij, dim=-1)
-        r_hat_ij = r_ij / r_ij_norm.unsqueeze(-1)
 
         if not compute_gradient:
             return r_ij_norm
 
+        # Match autograd's zero gradient at coincident atoms or chain centers.
+        safe_norm = r_ij_norm.masked_fill(r_ij_norm == 0, 1)
+        r_hat_ij = r_ij / safe_norm.unsqueeze(-1)
         grad_i = r_hat_ij
         grad_j = -1 * r_hat_ij
         grad = torch.stack((grad_i, grad_j), dim=1)

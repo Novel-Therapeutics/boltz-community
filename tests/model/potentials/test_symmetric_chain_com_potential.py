@@ -133,15 +133,61 @@ def test_padding_coordinates_do_not_affect_energy_or_gradient() -> None:
     )
 
 
-def test_no_pairs_returns_zero() -> None:
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, torch.float64, torch.bfloat16, torch.float16]
+)
+def test_no_pairs_returns_zero(dtype: torch.dtype) -> None:
     """An empty symmetric-pair set still bypasses the COM reduction."""
     feats = _features((2, 5))
     feats["symmetric_chain_index"] = torch.empty((1, 2, 0), dtype=torch.long)
-    coords = torch.zeros(3, 9, 3)
+    coords = torch.zeros(3, 9, 3, dtype=dtype)
     pot = SymmetricChainCOMPotential()
     params = {"buffer": 10.0}
 
-    torch.testing.assert_close(pot.compute(coords, feats, params), torch.zeros(3))
+    torch.testing.assert_close(pot.compute(coords, feats, params), coords.new_zeros(3))
     torch.testing.assert_close(
         pot.compute_gradient(coords, feats, params), torch.zeros_like(coords)
     )
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_coincident_centers_match_autograd(dtype: torch.dtype) -> None:
+    """Unequal chains with identical centers must not inject NaNs into guidance."""
+    feats = _features((2, 5), "absent_chain")
+    coords = torch.zeros(1, 9, 3, dtype=dtype)
+    coords[0, :3, 0] = coords.new_tensor([1, 2, 3])
+    coords[0, 3:7] = coords.new_tensor([[2, 1, 0], [2, -1, 0], [2, 0, 1], [2, 0, -1]])
+    coords.requires_grad_()
+    pot = SymmetricChainCOMPotential()
+    params = {"buffer": 5.0}
+
+    energy = pot.compute(coords, feats, params)
+    expected = torch.autograd.grad(energy.sum(), coords)[0]
+    actual = pot.compute_gradient(coords.detach(), feats, params)
+
+    torch.testing.assert_close(energy, coords.new_tensor([5.0]))
+    assert torch.isfinite(actual).all()
+    assert torch.count_nonzero(actual) == 0
+    torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_near_coincident_centers_keep_unit_distance_gradient(
+    dtype: torch.dtype,
+) -> None:
+    """The zero-distance guard must not damp small but nonzero distances."""
+    feats = _features((2, 5))
+    coords = torch.zeros(1, 9, 3, dtype=dtype)
+    coords[0, 3:7, 0] = 1e-10
+    coords.requires_grad_()
+    pot = SymmetricChainCOMPotential()
+    params = {"buffer": 5.0}
+
+    expected = torch.autograd.grad(pot.compute(coords, feats, params).sum(), coords)[0]
+    actual = pot.compute_gradient(coords.detach(), feats, params)
+    expected_scale = torch.zeros_like(coords)
+    expected_scale[0, :3, 0] = 1 / 3
+    expected_scale[0, 3:7, 0] = -1 / 4
+
+    torch.testing.assert_close(actual, expected)
+    torch.testing.assert_close(actual, expected_scale)
