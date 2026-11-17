@@ -69,9 +69,10 @@ def test_same_chain_connection_energy_and_gradient(distance):
     xyz = torch.tensor([[[0.0, 0.0, 0.0], [distance, 0.0, 0.0]]], requires_grad=True)
     potential = ConnectionsPotential()
     parameters = {"buffer": 2.0}
-    energy = potential.compute(xyz, feats, parameters)
+    with torch.enable_grad():
+        energy = potential.compute(xyz, feats, parameters)
+        expected = torch.autograd.grad(energy.sum(), xyz)[0]
     assert float(energy.item()) == pytest.approx(max(distance - 2.0, 0.0))
-    expected = torch.autograd.grad(energy.sum(), xyz)[0]
     actual = potential.compute_gradient(xyz.detach(), feats, parameters)
     torch.testing.assert_close(actual, expected)
     if distance > 2.0:
@@ -161,9 +162,10 @@ def test_bounded_connection_energy_and_gradient(distance):
     }
     xyz = torch.tensor([[[0.0, 0.0, 0.0], [distance, 0.0, 0.0]]], requires_grad=True)
     potential = ConnectionsPotential()
-    energy = potential.compute(xyz, features, {"buffer": 2.0})
+    with torch.enable_grad():
+        energy = potential.compute(xyz, features, {"buffer": 2.0})
+        expected = torch.autograd.grad(energy.sum(), xyz)[0]
     actual = potential.compute_gradient(xyz.detach(), features, {"buffer": 2.0})
-    expected = torch.autograd.grad(energy.sum(), xyz)[0]
     assert torch.isfinite(actual).all()
     torch.testing.assert_close(actual, expected)
     if 0 < distance < 1.58375:

@@ -219,8 +219,9 @@ def test_selected_energy_and_analytic_gradient_match_autograd(device, coincident
     xyz.requires_grad_()
     before = {k: v.clone() for k, v in features.items()}
     potential = IntraChainGeometryPotential()
-    energy = potential.compute(xyz, features, PARAMETERS)
-    expected = torch.autograd.grad(energy.sum(), xyz)[0]
+    with torch.enable_grad():
+        energy = potential.compute(xyz, features, PARAMETERS)
+        expected = torch.autograd.grad(energy.sum(), xyz)[0]
     actual = potential.compute_gradient(xyz.detach(), features, PARAMETERS)
     assert torch.isfinite(energy).all() and torch.isfinite(actual).all()
     torch.testing.assert_close(actual, expected)
