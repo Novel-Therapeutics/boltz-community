@@ -126,11 +126,20 @@ def test_removed_closure_does_not_strengthen_geometry_in_retained_fragment():
     )
 
 
-@pytest.mark.parametrize("gap,missing", [(False, False), (True, False), (False, True)])
-def test_adjacent_peptide_bonds_are_protected_without_bridging_missing_residues(
-    gap, missing
+@pytest.mark.parametrize(
+    "gap,missing,explicit_peptide",
+    [
+        (False, False, False),
+        (True, False, False),
+        (False, True, False),
+        (False, False, True),
+    ],
+)
+def test_peptide_priors_protect_present_adjacent_links_without_duplicating_closure(
+    gap, missing, explicit_peptide
 ):
-    data = constraint_input([(2, 2, 0, 1, 0, 3, COVALENT)])
+    closure_atom = 2 if explicit_peptide else 3
+    data = constraint_input([(2, 2, 0, 1, 0, closure_atom, COVALENT)])
     data.residue_constraints = None
     data.structure.chains[0]["mol_type"] = const.chain_type_ids["PROTEIN"]
     data.structure.chains[0]["res_idx"] = 0
@@ -147,8 +156,9 @@ def test_adjacent_peptide_bonds_are_protected_without_bridging_missing_residues(
         atoms[2]["is_present"] = False
     data.structure.atoms = atoms
     feats = process_residue_constraint_features(data)
-    if gap or missing:
+    if gap or missing or explicit_peptide:
         assert feats["rdkit_bounds_index"].shape == (2, 0)
+        assert feats["intrachain_covalent_bound_indices"].numel() == 0
     else:
         assert feats["rdkit_bounds_index"].T.tolist() == [[0, 2]]
         assert feats["intrachain_covalent_bound_indices"].tolist() == [0]

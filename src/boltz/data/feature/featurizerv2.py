@@ -2253,10 +2253,12 @@ def process_residue_constraint_features(data: Tokenized) -> dict[str, Tensor]:
         tuple(sorted((int(bond["atom_1"]), int(bond["atom_2"]))))
         for bond in internal_links
     }
-    existing_pairs = set()
+    # Preprocessed inputs may have explicit links without stored bounds.
+    # Do not regenerate those closure pairs as peptide geometry priors.
+    existing_pairs = set(explicit_pairs)
     if len(linked_chains):
         bound_pairs = [tuple(sorted(pair)) for pair in bound_atoms.T.tolist()]
-        existing_pairs = set(bound_pairs)
+        existing_pairs.update(bound_pairs)
         for i, pair in enumerate(bound_pairs):
             if pair in explicit_pairs:
                 intrachain_covalent_bounds_mask[i] = False
