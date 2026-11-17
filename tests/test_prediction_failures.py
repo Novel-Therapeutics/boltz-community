@@ -9,6 +9,7 @@ import pytorch_lightning as pl
 import torch
 from click.testing import CliRunner
 from pytorch_lightning import LightningModule
+from pytorch_lightning.strategies import DDPStrategy
 
 import boltz.main as main
 from boltz.data import const
@@ -121,6 +122,7 @@ def _run_cli(
     devices="1",
     trainer_configs=None,
     batch_size=1,
+    accelerator="cpu",
 ):
     (tmp_path / "input.yaml").write_text("version: 1\n")
     records = [
@@ -226,7 +228,7 @@ def _run_cli(
             "--out_dir",
             str(tmp_path),
             "--accelerator",
-            "cpu",
+            accelerator,
             "--devices",
             devices,
             "--batch_size",
@@ -357,6 +359,25 @@ def test_cli_sizes_each_phase_after_filtering(monkeypatch, tmp_path, devices, ex
     assert calls == ["structure", "affinity"]
     assert [config["devices"] for config in configs] == expected
     assert (output / "case0" / "affinity_case0.json").read_text() == "existing output\n"
+
+
+def test_cli_sizes_all_visible_gpus_per_phase(monkeypatch, tmp_path):
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 4)
+    configs = []
+    result, calls, _ = _run_cli(
+        monkeypatch,
+        tmp_path,
+        [False, False, False],
+        [True, False, False],
+        existing={0: ("affinity_case0.json",)},
+        devices="-1",
+        accelerator="gpu",
+        trainer_configs=configs,
+    )
+    assert result.exit_code == 0, result.output
+    assert calls == ["structure", "affinity"]
+    assert [config["devices"] for config in configs] == [3, 2]
+    assert all(isinstance(config["strategy"], DDPStrategy) for config in configs)
 
 
 def test_cli_sizes_affinity_when_all_structure_is_existing(monkeypatch, tmp_path):

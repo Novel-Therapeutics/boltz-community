@@ -1668,6 +1668,13 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             )
 
     # Set up trainer
+    # Resolve Lightning's all-visible-GPUs shorthand before selecting DDP, so
+    # its per-phase record limit also applies to --devices -1. Leave non-CUDA
+    # accelerator selection and unavailable-device errors to Lightning.
+    if accelerator == "gpu" and devices == -1:
+        available_devices = torch.cuda.device_count()
+        if available_devices:
+            devices = available_devices
     strategy = "auto"
     if accelerator == "mps":
         # MPS only supports single-device, float32
