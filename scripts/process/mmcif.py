@@ -72,7 +72,7 @@ class ParsedChain:
     entity: str
     type: str
     residues: list[ParsedResidue]
-    sequence: list[str]
+    sequence: Optional[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +98,8 @@ class ParsedStructure:
     # are absent. Used by downstream preprocessing to compute the same per-chain
     # cluster / MSA key that scripts/process/cluster.py emits.
     chain_to_seq: dict[str, str] = field(default_factory=dict)
+    # Chain-table index -> full sequence; names in the table may be truncated.
+    sequences: dict[int, str] = field(default_factory=dict)
 
 
 ####################################################################################################
@@ -751,7 +753,12 @@ def parse_polymer(  # noqa: C901, PLR0915, PLR0912
         entity=entity,
         residues=parsed,
         type=chain_type,
-        sequence=gemmi.one_letter_code(sequence),
+        # Preserve canonical parent letters for modified residues (e.g. MSE -> M),
+        # including residues absent from the coordinates.
+        sequence="".join(
+            gemmi.find_tabulated_residue(name).one_letter_code.upper().strip() or "X"
+            for name in sequence
+        ),
     )
 
 
@@ -910,6 +917,7 @@ def parse_mmcif(  # noqa: C901, PLR0915, PLR0912
     # Parse chains
     chains: list[ParsedChain] = []
     chain_to_seq: dict[str, str] = {}
+    chain_sequences: dict[int, str] = {}
     for raw_chain in structure[0].subchains():
         # Check chain type
         subchain_id = raw_chain.subchain_id()
@@ -939,6 +947,7 @@ def parse_mmcif(  # noqa: C901, PLR0915, PLR0912
                 chains.append(parsed_polymer)
                 if parsed_polymer.sequence is not None:
                     chain_to_seq[parsed_polymer.name] = parsed_polymer.sequence
+                    chain_sequences[len(chains) - 1] = parsed_polymer.sequence
 
         # Parse a non-polymer
         elif entity_type in {"NonPolymer", "Branched"}:
@@ -1029,6 +1038,7 @@ def parse_mmcif(  # noqa: C901, PLR0915, PLR0912
                 atom_num,
                 res_idx,
                 res_num,
+                0,  # No cyclic-period annotation in this training parser.
             )
         )
         chain_to_idx[chain.name] = asym_id
@@ -1130,4 +1140,5 @@ def parse_mmcif(  # noqa: C901, PLR0915, PLR0912
         info=info,
         covalents=[],
         chain_to_seq=chain_to_seq,
+        sequences=chain_sequences,
     )
