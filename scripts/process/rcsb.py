@@ -141,6 +141,7 @@ def parse(
     # Create chain metadata
     protein_id = const.chain_type_ids["PROTEIN"]
     nonpolymer_id = const.chain_type_ids["NONPOLYMER"]
+    polymer_ids = {const.chain_type_ids[kind] for kind in ("PROTEIN", "DNA", "RNA")}
     chain_info = []
     for i, chain in enumerate(structure.chains):
         mol_type = int(chain["mol_type"])
@@ -148,9 +149,11 @@ def parse(
 
         # Prefer the full sequence by chain index: the table truncates long names.
         # Keep the existing name-based parser interface as a fallback.
-        sequence = getattr(parsed, "sequences", {}).get(
-            i, parsed.chain_to_seq.get(subchain)
-        )
+        sequence = None
+        if mol_type in polymer_ids:
+            sequence = getattr(parsed, "sequences", {}).get(
+                i, parsed.chain_to_seq.get(subchain)
+            )
         sequence_id = hash_sequence(sequence) if sequence else None
         if sequence_id is not None:
             cluster_key = sequence_id

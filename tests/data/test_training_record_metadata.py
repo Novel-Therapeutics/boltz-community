@@ -243,6 +243,36 @@ def test_existing_name_based_parser_interface_is_preserved(
     assert [c.msa_id for c in target.record.chains[:2]] == [seq_id] * 2
 
 
+@pytest.mark.parametrize("ligand_index,expected", [(4, "ligand"), (5, "legacy-multi")])
+@pytest.mark.parametrize("indexed", [False, True])
+def test_nonpolymer_name_collision_does_not_inherit_a_polymer_sequence(
+    scripts, parsed, tmp_path, monkeypatch, ligand_index, expected, indexed
+):
+    rcsb, cluster = scripts
+    parsed.data.chains[0]["name"] = "ABCDE"
+    parsed.data.chains[ligand_index]["name"] = "ABCDE_ligand"
+    seq_id = cluster.hash_sequence(parsed.sequences[0])
+    parsed.chain_to_seq["ABCDE"] = parsed.sequences[0]
+    if not indexed:
+        del parsed.sequences
+    (tmp_path / f"{seq_id}.npz").touch()
+    monkeypatch.setattr(rcsb, "parse_mmcif", lambda *args: parsed)
+    target = rcsb.parse(
+        rcsb.PDB("example", "unused"),
+        {},
+        {
+            seq_id: "protein",
+            "atp": "ligand",
+            "nag": "first-residue",
+            "example_11": "legacy-multi",
+        },
+        msa_dir=tmp_path,
+    )
+    assert target.record.chains[0].cluster_id == "protein"
+    assert target.record.chains[ligand_index].cluster_id == expected
+    assert target.record.chains[ligand_index].msa_id == ""
+
+
 def test_a_directory_is_not_linked_as_an_msa(scripts, parsed, tmp_path, monkeypatch):
     rcsb, cluster = scripts
     monkeypatch.setattr(rcsb, "parse_mmcif", lambda *args: parsed)
