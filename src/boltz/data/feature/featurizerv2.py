@@ -1,4 +1,5 @@
 import math
+import warnings
 from typing import Optional
 from collections import deque
 import numba
@@ -7,7 +8,8 @@ import numpy.typing as npt
 import rdkit.Chem.Descriptors
 import torch
 from numba import types
-from rdkit.Chem import Mol
+from rdkit.Chem import GetPeriodicTable, Mol, MolFromSmiles
+from rdkit.Chem.rdDistGeom import GetMoleculeBoundsMatrix
 from scipy.spatial.distance import cdist
 from torch import Tensor, from_numpy
 from torch.nn.functional import one_hot
@@ -2046,19 +2048,35 @@ _ATOM_INDEX_FEATURES = {
         "rdkit_bounds_angle_mask",
         "rdkit_upper_bounds",
         "rdkit_lower_bounds",
+        "rdkit_bounds_guidance_only_mask",
     ),
     "chiral_atom_index": ("chiral_reference_mask", "chiral_atom_orientations"),
     "stereo_bond_index": ("stereo_reference_mask", "stereo_bond_orientations"),
     "planar_bond_index": (),
     "planar_ring_5_index": (),
     "planar_ring_6_index": (),
-    "connected_atom_index": ("connected_chain_index",),
+    "connected_atom_index": (
+        "connected_atom_lower_bounds",
+        "connected_atom_upper_bounds",
+        "connected_atom_is_interchain",
+    ),
     "contact_pair_index": (
         "contact_union_index",
         "contact_negation_mask",
         "contact_thresholds",
     ),
 }
+
+
+def _atom_feature_map(data: Tokenized) -> Tensor:
+    """Map full-structure atom indices to the atoms in token feature order."""
+    atom_map = torch.full((len(data.structure.atoms),), -1, dtype=torch.long)
+    offset = 0
+    for token in data.tokens:
+        start, num = int(token["atom_idx"]), int(token["atom_num"])
+        atom_map[start : start + num] = torch.arange(offset, offset + num)
+        offset += num
+    return atom_map
 
 
 def remap_constraint_features(
@@ -2074,12 +2092,7 @@ def remap_constraint_features(
     drops chain pairs whose chains were cropped out entirely. Without a crop
     every index maps to itself and nothing changes.
     """
-    atom_map = torch.full((len(data.structure.atoms),), -1, dtype=torch.long)
-    offset = 0
-    for token in data.tokens:
-        start, num = int(token["atom_idx"]), int(token["atom_num"])
-        atom_map[start : start + num] = torch.arange(offset, offset + num)
-        offset += num
+    atom_map = _atom_feature_map(data)
 
     features = dict(features)
     for key, companions in _ATOM_INDEX_FEATURES.items():
@@ -2088,8 +2101,29 @@ def remap_constraint_features(
         remapped = atom_map[features[key]]
         keep = (remapped >= 0).all(dim=0)
         features[key] = remapped[:, keep]
+        if key == "connected_atom_index":
+            # Chain connectivity contains only inter-chain links. Its columns
+            # follow that subset of the atom links, including repeated links.
+            interchain = features.get(
+                "connected_atom_is_interchain", torch.ones_like(keep)
+            )
+            features["connected_chain_index"] = features["connected_chain_index"][
+                :, keep[interchain]
+            ]
+        if (
+            key == "rdkit_bounds_index"
+            and "intrachain_covalent_bound_indices" in features
+        ):
+            # These are positions in the bounds table, not atom indices. Drop
+            # removed bounds and renumber the selected positions with the table.
+            selected = torch.zeros_like(keep)
+            selected[features["intrachain_covalent_bound_indices"]] = True
+            features["intrachain_covalent_bound_indices"] = torch.nonzero(
+                selected[keep], as_tuple=True
+            )[0]
         for companion in companions:
-            features[companion] = features[companion][..., keep]
+            if companion in features:  # Old feature dictionaries omit new fields.
+                features[companion] = features[companion][..., keep]
 
     if "contact_union_index" in features:
         # Unions whose pairs were all dropped leave gaps; renumber.
@@ -2184,8 +2218,116 @@ def process_residue_constraint_features(data: Tokenized) -> dict[str, Tensor]:
         planar_ring_5_index = torch.empty((5, 0), dtype=torch.long)
         planar_ring_6_index = torch.empty((6, 0), dtype=torch.long)
 
+    # A newly guided intra-chain link must not pull apart the modified
+    # residues in that chain. Select their existing geometry bounds for an
+    # additional guidance term; unrelated chains retain their usual weight.
+    intrachain_covalent_bounds_mask = np.zeros(rdkit_bounds_index.shape[1], dtype=bool)
+    guidance_only_mask = torch.zeros(rdkit_bounds_index.shape[1], dtype=torch.bool)
+    bonds = data.structure.bonds
+    internal_links = bonds[
+        (bonds["chain_1"] == bonds["chain_2"])
+        & (bonds["type"] == const.bond_type_ids["COVALENT"])
+    ]
+    # A closure removed by a crop must not strengthen geometry in a retained
+    # fragment of the same chain.
+    if len(internal_links):
+        atom_map = _atom_feature_map(data).numpy()
+        internal_links = internal_links[
+            (atom_map[internal_links["atom_1"]] >= 0)
+            & (atom_map[internal_links["atom_2"]] >= 0)
+        ]
+    linked_chains = np.unique(internal_links["chain_1"])
+    bound_atoms = rdkit_bounds_index.numpy()
+    for chain in data.structure.chains:
+        if chain["asym_id"] in linked_chains:
+            start = chain["atom_idx"]
+            end = start + chain["atom_num"]
+            intrachain_covalent_bounds_mask |= (
+                (bound_atoms >= start) & (bound_atoms < end)
+            ).all(axis=0)
+
+    # The fork already stores explicit YAML closure bounds for geometry checks.
+    # Keep those bounds at their existing weight: the extra term protects the
+    # surrounding geometry, rather than adding another closure force.
+    explicit_pairs = {
+        tuple(sorted((int(bond["atom_1"]), int(bond["atom_2"]))))
+        for bond in internal_links
+    }
+    existing_pairs = set()
+    if len(linked_chains):
+        bound_pairs = [tuple(sorted(pair)) for pair in bound_atoms.T.tolist()]
+        existing_pairs = set(bound_pairs)
+        for i, pair in enumerate(bound_pairs):
+            if pair in explicit_pairs:
+                intrachain_covalent_bounds_mask[i] = False
+
+    # CCD bounds stop at residue boundaries. Protect the peptide links as
+    # well, otherwise closing an internal link can stretch the neighboring
+    # C--N bond instead of an intra-residue bond.
+    peptide_pairs = []
+    for chain in data.structure.chains:
+        if (
+            chain["asym_id"] not in linked_chains
+            or chain["mol_type"] != const.chain_type_ids["PROTEIN"]
+        ):
+            continue
+        residues = data.structure.residues[
+            chain["res_idx"] : chain["res_idx"] + chain["res_num"]
+        ]
+        for left, right in zip(residues[:-1], residues[1:]):
+            if right["res_idx"] != left["res_idx"] + 1:
+                continue
+            endpoints = []
+            for residue, name in ((left, "C"), (right, "N")):
+                start = residue["atom_idx"]
+                atoms = data.structure.atoms[start : start + residue["atom_num"]]
+                matches = np.flatnonzero((atoms["name"] == name) & atoms["is_present"])
+                if len(matches) == 1:
+                    endpoints.append(int(start + matches[0]))
+            if len(endpoints) == 2 and tuple(sorted(endpoints)) not in existing_pairs:
+                peptide_pairs.append(endpoints)
+                existing_pairs.add(tuple(sorted(endpoints)))
+    if peptide_pairs:
+        # An amide reference supplies the existing RDKit bond-range prior.
+        # The usual bond_buffer is applied by PoseBustersPotential.
+        amide_bounds = GetMoleculeBoundsMatrix(MolFromSmiles("CC(=O)NC"))
+        count = len(peptide_pairs)
+        rdkit_bounds_index = torch.cat(
+            (rdkit_bounds_index, torch.tensor(peptide_pairs).T), dim=1
+        )
+        rdkit_lower_bounds = torch.cat(
+            (
+                rdkit_lower_bounds,
+                torch.full((count,), amide_bounds[3, 1], dtype=torch.float),
+            )
+        )
+        rdkit_upper_bounds = torch.cat(
+            (
+                rdkit_upper_bounds,
+                torch.full((count,), amide_bounds[1, 3], dtype=torch.float),
+            )
+        )
+        rdkit_bounds_bond_mask = torch.cat(
+            (rdkit_bounds_bond_mask, torch.ones(count, dtype=torch.bool))
+        )
+        rdkit_bounds_angle_mask = torch.cat(
+            (rdkit_bounds_angle_mask, torch.zeros(count, dtype=torch.bool))
+        )
+        intrachain_covalent_bounds_mask = np.concatenate(
+            (intrachain_covalent_bounds_mask, np.ones(count, dtype=bool))
+        )
+        # These priors are added for sampling. Preserve the fork's existing
+        # output diagnostics and affinity sample-selection contract.
+        guidance_only_mask = torch.cat(
+            (guidance_only_mask, torch.ones(count, dtype=torch.bool))
+        )
+
     return {
         "rdkit_bounds_index": rdkit_bounds_index,
+        "rdkit_bounds_guidance_only_mask": guidance_only_mask,
+        "intrachain_covalent_bound_indices": torch.from_numpy(
+            np.flatnonzero(intrachain_covalent_bounds_mask)
+        ),
         "rdkit_bounds_bond_mask": rdkit_bounds_bond_mask,
         "rdkit_bounds_angle_mask": rdkit_bounds_angle_mask,
         "rdkit_upper_bounds": rdkit_upper_bounds,
@@ -2202,24 +2344,78 @@ def process_residue_constraint_features(data: Tokenized) -> dict[str, Tensor]:
     }
 
 
-def process_chain_feature_constraints(data: Tokenized) -> dict[str, Tensor]:
+def process_chain_feature_constraints(
+    data: Tokenized, ref_element: Optional[Tensor] = None
+) -> dict[str, Tensor]:
     structure = data.structure
+    lower_bounds, upper_bounds = [], []
+    interchain_mask = []
+    elements = None
+    if ref_element is not None and np.any(
+        (structure.bonds["chain_1"] == structure.bonds["chain_2"])
+        & (structure.bonds["type"] == const.bond_type_ids["COVALENT"])
+    ):
+        # ref_element follows the cropped tokens; bonds still address the full
+        # structure. Restore full-table alignment before looking up endpoints.
+        atom_map = _atom_feature_map(data)
+        elements = np.zeros(len(atom_map), dtype=np.int64)
+        present = atom_map >= 0
+        elements[present] = ref_element.argmax(-1)[atom_map[present]].numpy()
     if structure.bonds.shape[0] > 0:
         connected_chain_index, connected_atom_index = [], []
+        intra_chain_pairs = set()
         for connection in structure.bonds:
+            lower, upper = 0.0, 0.0
             if connection["chain_1"] == connection["chain_2"]:
-                continue
-            connected_chain_index.append([connection["chain_1"], connection["chain_2"]])
+                # Explicit YAML covalent links may close a ring within one
+                # chain. Ordinary residue-internal bonds use RDKit bounds.
+                if connection["type"] != const.bond_type_ids["COVALENT"]:
+                    continue
+                pair = tuple(
+                    sorted((int(connection["atom_1"]), int(connection["atom_2"])))
+                )
+                if pair[0] == pair[1]:
+                    raise ValueError("A covalent bond must connect two distinct atoms.")
+                if pair in intra_chain_pairs:
+                    continue
+                intra_chain_pairs.add(pair)
+                if elements is not None and (atom_map[list(pair)] >= 0).all():
+                    atom_elements = elements[list(pair)]
+                    if (atom_elements > 0).all() and (atom_elements <= 118).all():
+                        radius_sum = sum(
+                            GetPeriodicTable().GetRcovalent(int(element))
+                            for element in atom_elements
+                        )
+                        if np.isfinite(radius_sum) and radius_sum > 0:
+                            # YAML supplies endpoints, not a bond order. Use a
+                            # buffered element-based range rather than only
+                            # attracting atoms below a universal upper bound.
+                            lower, upper = radius_sum * 0.875, radius_sum * 1.125
+                    if upper == 0.0:
+                        warnings.warn(
+                            f"Unknown element in intra-chain covalent bond {pair}; "
+                            "using the legacy connection upper bound only.",
+                            stacklevel=2,
+                        )
+            else:
+                connected_chain_index.append(
+                    [connection["chain_1"], connection["chain_2"]]
+                )
             connected_atom_index.append([connection["atom_1"], connection["atom_2"]])
+            interchain_mask.append(bool(connection["chain_1"] != connection["chain_2"]))
+            lower_bounds.append(lower)
+            upper_bounds.append(upper)
         if len(connected_chain_index) > 0:
             connected_chain_index = torch.tensor(
                 connected_chain_index, dtype=torch.long
             ).T
+        else:
+            connected_chain_index = torch.empty((2, 0), dtype=torch.long)
+        if len(connected_atom_index) > 0:
             connected_atom_index = torch.tensor(
                 connected_atom_index, dtype=torch.long
             ).T
         else:
-            connected_chain_index = torch.empty((2, 0), dtype=torch.long)
             connected_atom_index = torch.empty((2, 0), dtype=torch.long)
     else:
         connected_chain_index = torch.empty((2, 0), dtype=torch.long)
@@ -2239,6 +2435,9 @@ def process_chain_feature_constraints(data: Tokenized) -> dict[str, Tensor]:
     return {
         "connected_chain_index": connected_chain_index,
         "connected_atom_index": connected_atom_index,
+        "connected_atom_is_interchain": torch.tensor(interchain_mask, dtype=torch.bool),
+        "connected_atom_lower_bounds": torch.tensor(lower_bounds, dtype=torch.float),
+        "connected_atom_upper_bounds": torch.tensor(upper_bounds, dtype=torch.float),
         "symmetric_chain_index": symmetric_chain_index,
     }
 
@@ -2523,7 +2722,7 @@ class Boltz2Featurizer:
                 data,
                 {
                     **process_residue_constraint_features(data),
-                    **process_chain_feature_constraints(data),
+                    **process_chain_feature_constraints(data, atom_features["ref_element"]),
                     **process_contact_feature_constraints(
                         data=data,
                         inference_pocket_constraints=inference_pocket_constraints if inference_pocket_constraints else [],

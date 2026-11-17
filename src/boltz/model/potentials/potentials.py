@@ -463,6 +463,31 @@ class PoseBustersPotential(FlatBottomPotential, DistancePotential):
         return pair_index, (k, lower_bounds, upper_bounds), None, None, None
 
 
+class IntraChainGeometryPotential(PoseBustersPotential):
+    """Additional geometry guidance only in chains with explicit internal links."""
+
+    def compute_args(self, feats, parameters):
+        indices = feats.get("intrachain_covalent_bound_indices")
+        if indices is None or indices.shape[-1] == 0:
+            index = feats["rdkit_bounds_index"][0, :, :0]
+            empty = feats["rdkit_lower_bounds"][0, :0]
+            return index, (empty, empty, empty), None, None, None
+
+        indices = indices[0]
+        selected = dict(feats)
+        selected["rdkit_bounds_index"] = feats["rdkit_bounds_index"].index_select(
+            -1, indices
+        )
+        for name in (
+            "rdkit_lower_bounds",
+            "rdkit_upper_bounds",
+            "rdkit_bounds_bond_mask",
+            "rdkit_bounds_angle_mask",
+        ):
+            selected[name] = feats[name].index_select(-1, indices)
+        return super().compute_args(selected, parameters)
+
+
 class ConnectionsPotential(FlatBottomPotential, DistancePotential):
     def compute_args(self, feats, parameters):
         pair_index = feats["connected_atom_index"][0]
@@ -470,6 +495,13 @@ class ConnectionsPotential(FlatBottomPotential, DistancePotential):
         upper_bounds = torch.full(
             (pair_index.shape[1],), parameters["buffer"], device=pair_index.device
         )
+        if "connected_atom_lower_bounds" in feats:
+            lower_bounds = feats["connected_atom_lower_bounds"][0]
+        if "connected_atom_upper_bounds" in feats:
+            specified_upper = feats["connected_atom_upper_bounds"][0]
+            upper_bounds = torch.where(
+                specified_upper > 0, specified_upper, upper_bounds
+            )
         k = torch.ones_like(upper_bounds)
 
         return pair_index, (k, lower_bounds, upper_bounds), None, None, None
@@ -792,6 +824,21 @@ def get_potentials(steering_args, boltz2=False):
                     }
                 ),
             ]
+        )
+    if boltz2 and steering_args["physical_guidance_update"]:
+        potentials.append(
+            IntraChainGeometryPotential(
+                parameters={
+                    "guidance_interval": 1,
+                    # Together with the existing 0.01 geometry update, give
+                    # these bounds the same 0.15 weight as bond closure.
+                    "guidance_weight": 0.14,
+                    "resampling_weight": 0.0,
+                    "bond_buffer": 0.125,
+                    "angle_buffer": 0.125,
+                    "clash_buffer": 0.10,
+                }
+            )
         )
     if boltz2 and (
         steering_args["fk_steering"] or steering_args["contact_guidance_update"]

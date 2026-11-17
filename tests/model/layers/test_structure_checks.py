@@ -209,3 +209,37 @@ def test_near_planar_centre_is_not_chosen_for_affinity():
     passed = passes_checks(checks)
     assert passed.tolist() == [False, True]
     assert select_affinity_sample(torch.tensor([0.9, 0.8]), passed) == 1
+
+
+@pytest.mark.parametrize("bad_existing", [False, True])
+def test_guidance_only_priors_preserve_output_checks_and_affinity_selection(bad_existing):
+    """New sampling priors must not become unrequested output selection gates."""
+    coords = torch.tensor([
+        [[0., 0., 0.], [3.0 if bad_existing else 1.5, 0., 0.], [9., 0., 0.]],
+        [[0., 0., 0.], [1.5, 0., 0.], [3., 0., 0.]],
+    ])
+    legacy = {
+        "rdkit_bounds_index": torch.tensor([[[0], [1]]]),
+        "rdkit_bounds_bond_mask": torch.tensor([[True]]),
+        "rdkit_bounds_angle_mask": torch.tensor([[False]]),
+        "rdkit_lower_bounds": torch.tensor([[1.4]]),
+        "rdkit_upper_bounds": torch.tensor([[1.6]]),
+    }
+    extended = {
+        "rdkit_bounds_index": torch.tensor([[[0, 1], [1, 2]]]),
+        "rdkit_bounds_bond_mask": torch.tensor([[True, True]]),
+        "rdkit_bounds_angle_mask": torch.tensor([[False, False]]),
+        "rdkit_lower_bounds": torch.tensor([[1.4, 1.4]]),
+        "rdkit_upper_bounds": torch.tensor([[1.6, 1.6]]),
+        "rdkit_bounds_guidance_only_mask": torch.tensor([[False, True]]),
+    }
+    before = check_structures(coords, legacy, multiplicity=2)
+    after = check_structures(coords, extended, multiplicity=2)
+    for key in before:
+        assert torch.equal(before[key], after[key]), key
+    assert after["bonds_out_of_range"].tolist() == [int(bad_existing), 0]
+    iptm = torch.tensor([0.9, 0.8])
+    assert select_affinity_sample(iptm, passes_checks(after)) == int(bad_existing)
+    # Without the marker, the new prior really would alter the passing set.
+    del extended["rdkit_bounds_guidance_only_mask"]
+    assert check_structures(coords, extended, multiplicity=2)["bonds_out_of_range"][0] > after["bonds_out_of_range"][0]
