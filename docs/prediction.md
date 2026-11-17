@@ -223,6 +223,10 @@ Each output folder includes a confidence `.json` file with aggregated confidence
     "complex_ipae": 4.8123,           # Contact-weighted average PAE score when aggregating at interfaces; null when undefined
     "complex_pae_unweighted": 3.4512, # Unweighted average PAE score for the complex
     "complex_ipae_unweighted": 6.9310, # Unweighted average PAE score over all inter-chain pairs; binder-target PAE only for two chains (see below); null when undefined
+    "chain_ids": {                    # Original input labels for confidence indices
+        "0": "A",
+        "1": "B"
+    },
     "chains_ptm": {                   # Predicted TM score within each chain
         "0": 0.8533,
         "1": 0.8330
@@ -273,6 +277,12 @@ Each output folder includes a confidence `.json` file with aggregated confidence
     "structure_checks_passed": true   # No inverted or flattened stereocentre and no out-of-range bond
 }
 ```
+`chain_ids` maps confidence indices to original input chain labels for both
+Boltz-1 and Boltz-2, after invalid chains are removed and indices reassigned.
+Numeric keys in `chains_ptm`, `pair_chains_iptm`, and the per-chain PAE summaries
+are preserved. JSON keys are strings: `chain_ids["1"]` identifies chain `"1"`
+in those summaries. Native PDB/mmCIF chain names and coordinates are unchanged.
+
 `confidence_score`, `ptm` and `plddt` scores (and their interface and individual chain analogues) have a range of [0, 1], where higher values indicate higher confidence. `pde` and `pae` scores have a unit of angstroms, where lower values indicate higher confidence. The aggregated `complex_pde`, `complex_ipde`, `complex_pae`, `complex_ipae`, `chains_pae`, and `pair_chains_pae` values are contact-weighted: each token pair counts in proportion to its predicted probability of being in contact, taken from the distogram. This is how Boltz aggregates PDE.
 
 Each PAE summary also has an `_unweighted` counterpart (`complex_pae_unweighted`, `complex_ipae_unweighted`, `chains_pae_unweighted`, `pair_chains_pae_unweighted`): a plain average over all valid token pairs. This is the averaging used by the PAE metrics common in binder design, such as `pae_interaction` (Bennett et al., 2023). Contact weighting emphasizes pairs in contact, which tend to have low error, so the contact-weighted values are usually lower than their unweighted counterparts, often by a large margin, and should not be compared with such metrics. Use the contact-weighted values to judge the parts of the structure that are actually in contact.

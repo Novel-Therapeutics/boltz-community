@@ -317,6 +317,11 @@ class BoltzWriter(BasePredictionWriter):
                         }
                         for idx1 in pair_chains
                     }
+                    # Chain indices are reassigned after invalid-chain removal.
+                    # Retain numeric score keys and expose the original labels.
+                    confidence_summary_dict["chain_ids"] = {
+                        chain.chain_id: chain.chain_name for chain in chain_info
+                    }
                     if "complex_pae" in prediction:
                         confidence_summary_dict["complex_pae"] = _select_prediction_value(
                             prediction["complex_pae"], start + model_idx
