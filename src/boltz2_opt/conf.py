@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.conf — the engine adapter of the CONF levers (``opt/forward/conf/``: the template module, the confidence module's glue and heads,
 the distogram head, the input front of boltz 2.2.1), applied in the worker process by ``boltz2_opt.worker_launch --attach conf`` right after the
 worker's own model import (``boltz.model.models.boltz2``: every patched class is imported by then). The levers are class-level replacements of

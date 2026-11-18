@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.graph — the engine adapter of the trunk CUDA-graph lever (``opt/forward/graph/boltz_graph_trunk.py``: capture / replay of the
 Pairformer stacks — the trunk's 64 blocks and the confidence module's 8 — the template module's pair stack and the MSA module, plus the
 template module's hoisted distogram boundaries). Attached by ``boltz2_opt.worker_launch --attach graph`` right after the worker's model import

@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """The gate of the ENV route: run by run.sh only when the mode came from ``BOLTZ2_OPT`` (no ``--mode`` on the command line) and
 names a mode other than off. That route is only as real as the kit's hook — ``boltz2_opt_autoload.pth`` processed by site.py at interpreter
 start — because the same hook is what makes ``BOLTZ2_OPT=<mode>`` REFUSE by name in every stock ``boltz`` process on the box (opt/boltz2_opt/

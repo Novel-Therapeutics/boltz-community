@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.pairblock — the engine adapter of the core's fused triangle-attention block (``opt_core.attn.pair_fused``: LayerNorm -> one
 q|k|v|g|pair-bias prologue kernel -> attention core -> one sigmoid-gate * o @ W_o epilogue kernel) onto Boltz-2's ``TriangleAttention``
 (``boltz.model.layers.triangular_attention.attention``; the starting- and ending-node classes of every Pairformer stack: trunk, MSA-module

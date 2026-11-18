@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.rowpair_heads — seams 16-19 of the tensor-parallel line (``boltz2_opt.rowpair``, ``--n_gpu P > 1``): the three heads that read
 the trunk pair tensor — the diffusion conditioning, the diffusion sampler's token transformer and the confidence module — run on this rank's
 ROWS of it (``rowpair.TrunkShard``: ``z_loc [1, R, N, 128]``, rows ``[lay.r0, lay.r1)``); no ``N x N x c`` tensor is built on a rank. The

@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.msa_kernels — the engine adapter of the shared core's fused MSA-module Triton cells (``opt_core.ops.msa_opm`` / ``opt_core.ops.msa_pwa``) onto
 Boltz-2's MSA-module layers, through this tree's Boltz-2 entry points (``opt/forward/fpf_msa/boltz2.py``):
 

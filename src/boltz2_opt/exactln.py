@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.exactln — the engine adapter of the carried ``exactln`` kernel (the shared core's ``kernels.ln`` row ``exactln``,
 ``opt_core/kernels/ln/exactln``: a bit-for-bit replica of ATen's CUDA layer_norm forward, torch 2.12.0, on a one-warp-per-row schedule; the kit's own
 copy under ``opt/forward/exactln`` is not carried; its word ``on`` is refused by name) onto every ``torch.nn.functional.layer_norm`` call of the worker process:
