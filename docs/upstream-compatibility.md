@@ -117,7 +117,8 @@ The runtime only reads the contract.
 [Recorded receipts and comparisons](benchmarks/blackwell-profile-qualification.json)
 cover the RTX PRO 6000 Blackwell on bizon, compute capability 12.0, PyTorch
 2.12.0+cu130, Triton 3.7.0 and opt_core 0.5.228.0. The tested implementation is
-commit `2db3842`, based on `0607812`. GPU access waited for production to exit;
+commit `2db3842`, based on `0607812`, with the exact-equality repair at
+`fdd01d3` described below. GPU access waited for production to exit;
 no production process was paused. Disposable validation containers completed and
 the GPU had no compute processes afterward.
 
@@ -147,16 +148,44 @@ proven on 41,721,600 compared elements and then serving 15 calls each. No
 `--allow-partial` flag or new card-specific disabled-lever list was introduced.
 The focused CPU/source-contract suite passed 40 checks.
 
-Execution success does not establish whole-prediction equality or production
-accuracy. The public example's `exact` coordinates and confidence match `off`.
-For 8QLV, the aligned all-atom `exact`/`off` PDB RMSD is 0.010594 Å with guidance
-and 0.014243 Å without guidance. The cause of this full-profile difference is
-unresolved; individual kernel checks do not certify end-to-end bitwise equality.
-Guided 8QLV seed 0 DockQ is 0.755949 (`off`), 0.756501 (`exact`), 0.434991 (`fast`)
-and 0.599490 (`big`). These are selected regression diagnostics. They do not
+The initial `2db3842` source still differed from `off` on 8QLV: aligned all-atom
+PDB RMSD was 0.010594 Å with guidance and 0.014243 Å without guidance. These
+historical measurements remain in the original report. The later repair below
+eliminates those differences. Guided 8QLV seed 0 DockQ is now 0.755949 for both
+`off` and repaired `exact`; the unchanged `fast` and `big` paths measured 0.434991
+and 0.599490 respectively. These are selected regression diagnostics. They do not
 justify automatically adopting `fast` or `big` for Novel Design production.
 Cold process timings in the receipts are not speedup measurements. Other GPUs,
 PyTorch versions, affinity and wider workloads need separate qualification.
+
+#### Exact output equality repair
+
+[Bitwise equality evidence](benchmarks/blackwell-exact-bitwise-equality.json)
+records the first-divergence investigation and the fix at `fdd01d3`.
+The original prepared inputs, model settings and initial RNG states matched.
+The first difference appeared inside the first MSA layer's triangle-attention
+starting node. Its fused prologue had inherited an `sm_103` provider cell on
+`sm_120`. In the captured real call, its narrow four-head bias projection changed
+11 BF16 values, with maximum absolute difference 0.03125. The Q/K/V projections,
+gate projection and fused output stage were bit-identical to their stock
+counterparts. The small bias errors propagated through attention and recycling
+into the final coordinates.
+
+The exact block now runs the original `Linear` bias projection on `sm_120`,
+preserving that GEMM's shape and rounding. It retains the fused Q/K/V/gate
+projections, original attention core and fused output stage. Its census reports
+`bias_projection=torch_linear`. The inherited fused bias values are not consumed.
+The provider kernel files, other GPUs and the tolerance profiles are unchanged.
+
+On bizon's recorded PyTorch 2.12.0+cu130 stack, repaired 8QLV seed 0 matches
+`off` **bit for bit across all 39 output tensors**, with and without guidance.
+All 78 prepared input tensors and initial/final RNG states match. The unguided
+trace also matches at all 74 recorded boundaries. PDB records and confidence
+JSON match the saved controls. The 117-token regression, which exercises the
+trunk CUDA-graph path, also matches its saved PDB/confidence control. All three
+repaired profile runs return **0**. The focused CPU/source-contract suite passes
+42 checks. Existing completed controls and scores were reused after artifact
+verification; diagnostic repetitions have explicit recorded purposes.
 
 ### Historical compatibility snapshots
 
