@@ -290,7 +290,7 @@
     "upstream/worker_launch.py": "74a876638f18f77c8a52fec678fe4bc19f2f732a27d7e2f17626fbb1fff3d4ed",
     "xpu.py": "fbf4738284e492b9f8d5d6656afc3c86e2c27cba5f086d5b782f6f36cac708b6"
   },
-  "fork_version": "2.14.0",
+  "fork_version": "2.15.0",
   "numeric_modules": [
     "boltz.main",
     "boltz.model.layers.attentionv2",

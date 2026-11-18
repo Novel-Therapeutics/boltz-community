@@ -1,15 +1,24 @@
 [build-system]
-requires = ["setuptools >= 64.0", "wheel"]
+requires = ["setuptools >= 77.0", "wheel"]
 build-backend = "_build_backend"
 backend-path = ["."]
 
 [project]
 name = "boltz-community"
-version = "2.14.0"
+version = "2.15.0"
 requires-python = ">=3.11"
 description = "Community-maintained fork of Boltz with bug fixes, broader compatibility, and CI"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT AND Apache-2.0 AND BSD-3-Clause"
+license-files = [
+    "LICENSE",
+    "src/boltz/_anthropic_engine/engine/LICENSE",
+    "src/boltz/_anthropic_engine/engine/NOTICE",
+    "src/boltz/_anthropic_engine/engine/THIRD_PARTY_NOTICES.md",
+    "src/boltz/_anthropic_engine/engine/third_party_licenses/*.txt",
+    "src/boltz/_anthropic_engine/engine/opt/forward/*/LICENSE",
+    "src/boltz/_anthropic_engine/engine/opt/forward/*/NOTICE*",
+]
 authors = [
     { name = "Jeremy Wohlwend" },
     { name = "Gabriele Corso" },
@@ -30,7 +39,6 @@ keywords = [
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
