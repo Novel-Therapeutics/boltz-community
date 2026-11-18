@@ -22,6 +22,29 @@ from boltz.data.write.pdb import to_pdb
 from boltz.model.layers.structure_checks import CHECK_KEYS
 
 
+class PredictionError(RuntimeError):
+    """One or more inputs failed during a prediction phase."""
+
+
+def _check_prediction_failures(
+    trainer: Trainer,
+    pl_module: LightningModule,
+    failed: int,
+) -> None:
+    """Fail every rank after all successful predictions have been written."""
+    # Every rank participates, including workers with no local failures. Keep
+    # the writer's counter local so a later check cannot sum a global total again.
+    count = torch.tensor(failed, dtype=torch.int64, device=pl_module.device)
+    count = int(trainer.strategy.reduce(count, reduce_op="sum").item())
+    print(f"Number of failed examples: {count}")  # noqa: T201
+    if count:
+        msg = (
+            f"{count} prediction(s) failed. Successful outputs were kept. "
+            "Fix the failed inputs before continuing."
+        )
+        raise PredictionError(msg)
+
+
 def _serialize_summary_value(value: object) -> object:
     """Convert tensor/scalar summary values into JSON-safe Python values."""
     if isinstance(value, torch.Tensor):
@@ -95,6 +118,10 @@ class BoltzWriter(BasePredictionWriter):
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.write_embeddings = write_embeddings
 
+    def on_predict_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        """Start a fresh failure count when this writer is reused."""
+        self.failed = 0
+
     def write_on_batch_end(
         self,
         trainer: Trainer,  # noqa: ARG002
@@ -107,7 +134,7 @@ class BoltzWriter(BasePredictionWriter):
     ) -> None:
         """Write the predictions to disk."""
         if prediction["exception"]:
-            self.failed += 1
+            self.failed += len(batch["record"])
             return
 
         # Get the records
@@ -195,9 +222,15 @@ class BoltzWriter(BasePredictionWriter):
 
             # Compute chain map with masked removed, to be used later
             chain_map = {}
+            # Confidence uses the original token asym_id, while coordinate
+            # cleanup below assigns dense chain IDs to the surviving chains.
+            chain_ids = {}
             for i, mask in enumerate(structure.mask):
                 if mask:
                     chain_map[len(chain_map)] = i
+                    chain_ids[int(structure.chains[i]["asym_id"])] = (
+                        record.chains[i].chain_name
+                    )
 
             # Remove masked chains completely
             structure = structure.remove_invalid_chains()
@@ -317,6 +350,7 @@ class BoltzWriter(BasePredictionWriter):
                         }
                         for idx1 in pair_chains
                     }
+                    confidence_summary_dict["chain_ids"] = chain_ids
                     if "complex_pae" in prediction:
                         confidence_summary_dict["complex_pae"] = _select_prediction_value(
                             prediction["complex_pae"], start + model_idx
@@ -396,12 +430,11 @@ class BoltzWriter(BasePredictionWriter):
 
     def on_predict_epoch_end(
         self,
-        trainer: Trainer,  # noqa: ARG002
-        pl_module: LightningModule,  # noqa: ARG002
+        trainer: Trainer,
+        pl_module: LightningModule,
     ) -> None:
-        """Print the number of failed examples."""
-        # Print number of failed examples
-        print(f"Number of failed examples: {self.failed}")  # noqa: T201
+        """Report failures across ranks and refuse an incomplete prediction."""
+        _check_prediction_failures(trainer, pl_module, self.failed)
 
 
 class BoltzAffinityWriter(BasePredictionWriter):
@@ -426,6 +459,10 @@ class BoltzAffinityWriter(BasePredictionWriter):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    def on_predict_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        """Start a fresh failure count when this writer is reused."""
+        self.failed = 0
+
     def write_on_batch_end(
         self,
         trainer: Trainer,  # noqa: ARG002
@@ -438,7 +475,7 @@ class BoltzAffinityWriter(BasePredictionWriter):
     ) -> None:
         """Write the predictions to disk."""
         if prediction["exception"]:
-            self.failed += 1
+            self.failed += len(batch["record"])
             return
         record = batch["record"][0]
         # Dump affinity summary
@@ -483,9 +520,8 @@ class BoltzAffinityWriter(BasePredictionWriter):
 
     def on_predict_epoch_end(
         self,
-        trainer: Trainer,  # noqa: ARG002
-        pl_module: LightningModule,  # noqa: ARG002
+        trainer: Trainer,
+        pl_module: LightningModule,
     ) -> None:
-        """Print the number of failed examples."""
-        # Print number of failed examples
-        print(f"Number of failed examples: {self.failed}")  # noqa: T201
+        """Report failures across ranks and refuse an incomplete prediction."""
+        _check_prediction_failures(trainer, pl_module, self.failed)

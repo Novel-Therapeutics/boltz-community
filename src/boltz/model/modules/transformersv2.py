@@ -11,7 +11,6 @@ from torch.nn import (
 )
 
 from boltz.model.layers.attentionv2 import AttentionPairBias
-from boltz.model.layers import fused_inference
 from boltz.model.modules.utils import LinearNoBias, SwiGLU, default
 
 
@@ -114,9 +113,6 @@ class DiffusionTransformer(Module):
         multiplicity=1,
         conditioning_cache=None,
     ):
-        fused = fused_inference.token_transformer(self, a, s, bias, mask, to_keys, multiplicity, conditioning_cache)
-        if fused is not None:
-            return fused
         if self.pair_bias_attn:
             B, N, M, D = bias.shape
             L = len(self.layers)

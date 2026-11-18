@@ -69,7 +69,6 @@ class AttentionPairBias(nn.Module):
         k_in: Tensor,
         multiplicity: int = 1,
         use_flash_attn: bool = False,
-        precomputed_bias: Tensor | None = None,
     ) -> Tensor:
         """Forward pass.
 
@@ -95,7 +94,7 @@ class AttentionPairBias(nn.Module):
         k = self.proj_k(k_in).view(B, -1, self.num_heads, self.head_dim)
         v = self.proj_v(k_in).view(B, -1, self.num_heads, self.head_dim)
 
-        bias = self.proj_z(z) if precomputed_bias is None else precomputed_bias
+        bias = self.proj_z(z)
         bias = bias.repeat_interleave(multiplicity, 0)
 
         g = self.proj_g(s).sigmoid()

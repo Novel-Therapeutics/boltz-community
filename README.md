@@ -15,6 +15,9 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Requires PyTorch 2.4 or newer; CI tests the 2.4 minimum alongside the latest release. Compatible with Lightning 2.6+
 
 **Bug fixes:**
+- Fixed PDB `CONECT` serials when atoms are missing and `TER` records for noncontiguous chain IDs ([#40](https://github.com/Novel-Therapeutics/boltz-community/pull/40))
+- Fixed inconsistent subchain IDs across models in PDB templates ([#42](https://github.com/Novel-Therapeutics/boltz-community/pull/42))
+- Corrected symmetric-chain center-of-mass energies and gradients ([#43](https://github.com/Novel-Therapeutics/boltz-community/pull/43))
 - Fixed ROCm DDP crashes by allocating tensors directly on the target device instead of CPU-then-move ([#654](https://github.com/jwohlwend/boltz/pull/654))
 - Fixed `--write_full_pae` and `--write_full_pde` being ignored, and added matching `--no_write_full_pae` and `--no_write_full_pde` flags ([#602](https://github.com/jwohlwend/boltz/pull/602))
 - Fixed MSA CSV parsing removing paired duplicate sequences across different taxa ([#584](https://github.com/jwohlwend/boltz/pull/584))
@@ -72,6 +75,10 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed mmCIF output of `cyclic: true` polymers missing the ring-closing bond ([#710](https://github.com/jwohlwend/boltz/issues/710), thanks to [@TSC2412](https://github.com/TSC2412))
 
 **Improvements:**
+- Fixed training mmCIF records and added `--msa-dir` to link existing processed protein MSAs ([#38](https://github.com/Novel-Therapeutics/boltz-community/pull/38))
+- `boltz predict` now exits nonzero if any prediction fails and preserves successful outputs ([#39](https://github.com/Novel-Therapeutics/boltz-community/pull/39))
+- Added `chain_ids` to confidence JSON to map score indices to original input chain labels ([#41](https://github.com/Novel-Therapeutics/boltz-community/pull/41))
+- Added Boltz-2 guidance for explicit intra-chain covalent bonds with `--use_potentials` ([#44](https://github.com/Novel-Therapeutics/boltz-community/pull/44))
 - Published to PyPI as [`boltz-community`](https://pypi.org/project/boltz-community/): `pip install boltz-community` or `uv add boltz-community` ([#12](https://github.com/Novel-Therapeutics/boltz-community/issues/12))
 - `boltz predict` now aborts when any input fails processing; `--skip_bad_inputs` skips them instead ([c4ab80c](https://github.com/Novel-Therapeutics/boltz-community/commit/c4ab80c))
 - Deferred heavy imports (torch, rdkit, Lightning) so CLI help and input validation start instantly ([396275a](https://github.com/Novel-Therapeutics/boltz-community/commit/396275a))
@@ -83,7 +90,6 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Added structure checks to Boltz-2's `confidence_*.json`: inverted or flattened stereocentres and out-of-range bonds per model. Affinity uses the best sample that passes ([#29](https://github.com/Novel-Therapeutics/boltz-community/pull/29))
 
 **Performance improvements:**
-- Experimental Anthropic fused inference: `BOLTZ_FUSED_INFERENCE=all` (off by default; changes rounding). Benchmarks and validation limits are described in [details](docs/fused-inference.md) ([#37](https://github.com/Novel-Therapeutics/boltz-community/pull/37))
 - Reused activation casts and mask counts in Boltz-2 MSA inference, and released chunked OPM buffers earlier. Initial A10G layer benchmarks saved 13–50%; whole-prediction gain is unmeasured ([#34](https://github.com/Novel-Therapeutics/boltz-community/pull/34), [details](docs/msa-inference.md))
 - Added opt-in denoiser conditioning reuse: `BOLTZ_DENOISER_CACHE=on` (off by default). A10G predictions took 0.19–0.65% less time with identical outputs and scores ([#35](https://github.com/Novel-Therapeutics/boltz-community/pull/35), [details](docs/denoiser-cache.md))
 - Added Anthropic's FlashPairformer triangle kernels for Boltz-2 CUDA bf16 inference when `opt_core` is installed, with cuEquivariance/PyTorch fallbacks ([#33](https://github.com/Novel-Therapeutics/boltz-community/pull/33), [setup](#flashpairformer-kernels), thanks to [@MichalMalyska](https://github.com/MichalMalyska))
@@ -116,6 +122,8 @@ Thanks to everyone whose code, upstream PRs or reports are in this fork:
 - [@Michaelihc](https://github.com/Michaelihc): affinity-to-ΔG documentation
 - [@TSC2412](https://github.com/TSC2412): cyclic D-peptide stereochemistry report
 - [@MichalMalyska](https://github.com/MichalMalyska): FlashPairformer integration and H100 native-path validation
+- [@AubakirovArman](https://github.com/AubakirovArman) (Arman Aubakirov): multi-model templates, intra-chain covalent guidance, prediction failure reporting, training metadata, and confidence chain labels
+- [@davrens101](https://github.com/davrens101) (Davis Rens): center-of-mass potential and PDB connectivity fixes
 
 ## Contributing
 

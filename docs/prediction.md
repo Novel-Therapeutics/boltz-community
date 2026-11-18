@@ -91,12 +91,16 @@ The `cyclic` flag indicates whether a polymer chain (not ligands) is cyclic, joi
 
 * The `bond` constraint specifies covalent bonds between two atoms (`atom1` and `atom2`). It is currently only supported for CCD ligands and canonical residues, `CHAIN_ID` refers to the id of the residue set above, `RES_IDX` is the index (starting from 1) of the residue (1 for ligands), and `ATOM_NAME` is the standardized atom name (can be verified in CIF file of that component on the RCSB website).
 
+  For Boltz-2, `--use_potentials` also applies atom-level connection guidance to explicit bonds within one chain, including links between CCD-modified residues. The new connection bounds are the sum of their covalent radii ±12.5%, an approximation because YAML does not specify bond order. Unknown elements retain the legacy 2 Å connection upper bound with a warning; inter-chain connections retain their existing treatment. Existing explicit-bond geometry bounds and output geometry checks remain in place. Additional guidance protects CCD bond and angle geometry and consecutive protein C–N links throughout the affected chain, balancing the closure force. CCD nonbonded bounds keep their original weight, since the new bond may bring those atoms closer. Repeated or reversed declarations of an internal link count once; self-links are rejected. These local constraints do not establish fold or binding-pose accuracy or guarantee valid chemistry.
+
 * The `pocket` constraint specifies the residues associated with binding interaction, where `binder` refers to the chain binding to the pocket (which can be a molecule, protein, DNA or RNA) and `contacts` is the list of chain and residue indices (starting from 1, or atom names if the chain is a molecule) that form the binding site for the `binder`. `max_distance` specifies the maximum distance (in Angstrom, supported between 4A and 20A with 6A as default) between any atom in the `binder` and any atom in each of the `contacts` elements. If `force` is set to true, a potential will be used to enforce the pocket constraint.
 
 * The `contact` constraint specifies a contact between two residues or atoms, where `token1` and `token2` are the identifiers of the residues or atoms (in the format `[CHAIN_ID, RES_IDX/ATOM_NAME]`). `max_distance` specifies the maximum distance (in Angstrom, supported between 4A and 20A with 6A as default) between any pair of atoms in the two elements. If `force` is set to true, a potential will be used to enforce the contact constraint. 
 
 ### Templates
 `templates` is optional and allows specification of structural templates for protein chains. At minimum, provide the path to a CIF or PDB file.
+
+If a template has no polymer sequence metadata (for example, a PDB without SEQRES), Boltz warns and uses its observed residues as the template sequence. Missing residues are not reconstructed from author residue numbering. Templates with an existing full sequence retain that sequence and its unresolved positions.
 
 If you wish to explicitly define which of the chains in your YAML should be templated using this file, you can use the `chain_id` entry to specify them. If providing a PDB file, chain ids will be incrementally assigned to each subchain in a parent PDB chain resulting in template chain ids of A1, A2, B1, etc for PDB chains A and B. Make sure to look at the structure of the template PDB file to determine the corresponding value of `template_id` to provide. Whether a set of ids is provided or not, Boltz will find the best matching chains from the provided template. If you wish to explicitly define the mapping yourself, you may provide the corresponding `template_id`. 
 
@@ -223,6 +227,10 @@ Each output folder includes a confidence `.json` file with aggregated confidence
     "complex_ipae": 4.8123,           # Contact-weighted average PAE score when aggregating at interfaces; null when undefined
     "complex_pae_unweighted": 3.4512, # Unweighted average PAE score for the complex
     "complex_ipae_unweighted": 6.9310, # Unweighted average PAE score over all inter-chain pairs; binder-target PAE only for two chains (see below); null when undefined
+    "chain_ids": {                    # Original input labels for confidence indices
+        "0": "A",
+        "1": "B"
+    },
     "chains_ptm": {                   # Predicted TM score within each chain
         "0": 0.8533,
         "1": 0.8330
@@ -273,6 +281,15 @@ Each output folder includes a confidence `.json` file with aggregated confidence
     "structure_checks_passed": true   # No inverted or flattened stereocentre and no out-of-range bond
 }
 ```
+`chain_ids` maps confidence indices to original input chain labels for both
+Boltz-1 and Boltz-2. Invalid chains are omitted, while surviving chains retain
+their original confidence indices. For example, removing chain B from A/B/C
+leaves `chain_ids` as `{"0": "A", "2": "C"}`. Coordinate output may renumber
+the surviving chains independently.
+Numeric keys in `chains_ptm`, `pair_chains_iptm`, and the per-chain PAE summaries
+are preserved. JSON keys are strings: `chain_ids["1"]` identifies chain `"1"`
+in those summaries. Native PDB/mmCIF chain names and coordinates are unchanged.
+
 `confidence_score`, `ptm` and `plddt` scores (and their interface and individual chain analogues) have a range of [0, 1], where higher values indicate higher confidence. `pde` and `pae` scores have a unit of angstroms, where lower values indicate higher confidence. The aggregated `complex_pde`, `complex_ipde`, `complex_pae`, `complex_ipae`, `chains_pae`, and `pair_chains_pae` values are contact-weighted: each token pair counts in proportion to its predicted probability of being in contact, taken from the distogram. This is how Boltz aggregates PDE.
 
 Each PAE summary also has an `_unweighted` counterpart (`complex_pae_unweighted`, `complex_ipae_unweighted`, `chains_pae_unweighted`, `pair_chains_pae_unweighted`): a plain average over all valid token pairs. This is the averaging used by the PAE metrics common in binder design, such as `pae_interaction` (Bennett et al., 2023). Contact weighting emphasizes pairs in contact, which tend to have low error, so the contact-weighted values are usually lower than their unweighted counterparts, often by a large margin, and should not be compared with such metrics. Use the contact-weighted values to judge the parts of the structure that are actually in contact.
@@ -287,7 +304,7 @@ Two caveats when using the unweighted values for binder screening:
   pae_interaction  = ( binder_to_target + target_to_binder ) / 2
   ```
 
-  With a single target chain this is `(pair_chains_pae_unweighted[b][t] + pair_chains_pae_unweighted[t][b]) / 2`. A protein chain has one token per residue; a ligand has one token per atom. The weighting by `n_t` is exact when no tokens are excluded for lacking a valid frame, which is the normal case for proteins; otherwise compute the blocks directly from the full matrix in `pae_*.npz`. Chain indices are the order of chains in the predicted structure file. They are not always the input order, because chains with identical sequences are grouped together.
+  With a single target chain this is `(pair_chains_pae_unweighted[b][t] + pair_chains_pae_unweighted[t][b]) / 2`. A protein chain has one token per residue; a ligand has one token per atom. The weighting by `n_t` is exact when no tokens are excluded for lacking a valid frame, which is the normal case for proteins; otherwise compute the blocks directly from the full matrix in `pae_*.npz`. Use `chain_ids` to resolve the confidence indices to input labels. Confidence indices need not be contiguous after invalid-chain removal and may differ from the indices in coordinate output. Chains with identical sequences are grouped together, so these indices do not always follow input order.
 - **The same averaging does not make a published threshold valid for Boltz.** Cutoffs such as `pae_interaction < 10` were calibrated on AlphaFold2's PAE. Boltz predicts its own PAE, and those cutoffs have not been validated on it. Treat them as a starting point and calibrate on your own data.
 
 Both sets exclude padding and the diagonal. The unweighted values also exclude tokens without a valid frame on the aligned axis, as pTM and ipTM do, and match the definition proposed for upstream Boltz in [jwohlwend/boltz#707](https://github.com/jwohlwend/boltz/pull/707). `pair_chains_pae[i][j]` is the error of chain `j` when the structure is aligned on chain `i`, so it is not symmetric. Fields with no valid token pairs are written as `null`.
@@ -479,7 +496,15 @@ N[C@@H](Cc1ccc(O)cc1)C(=O)O
 
 ## Troubleshooting
 
- - Fused inference is experimental and off by default. `BOLTZ_FUSED_INFERENCE=off` restores the original paths. See [scope and validation](fused-inference.md).
+If any input fails during structure or affinity prediction (including a caught
+out-of-memory error), `boltz predict` exits nonzero after the current prediction
+phase. Successful outputs from that phase are kept. Failed batches count every
+record, and failures are summed across distributed workers, including workers
+without local failures. A failed structure phase stops before affinity prediction.
+Missing required `pre_affinity_*.npz` inputs also cause a nonzero exit before
+affinity loading; existing affinity results are still skipped unless `--override`
+is set. A fully successful run, including one that skips completed predictions,
+exits zero.
 
  - Denoiser conditioning caching is opt-in: set `BOLTZ_DENOISER_CACHE=on` to enable it, or `off` to disable it (the default). Boolean aliases `true/false` and `1/0` are accepted. Invalid values are rejected at prediction startup on both CPU and GPU. See [denoiser caching](denoiser-cache.md) for scope and memory limits.
  - If the FlashPairformer kernels from `opt_core` misbehave, set `BOLTZ_FLASHPAIRFORMER=off` to go back to the `cuequivariance` kernels while keeping them enabled.
