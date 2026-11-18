@@ -9,15 +9,22 @@ on:
 
 jobs:
   cpu-tests:
-    name: CPU tests (PyTorch ${{ matrix.torch }})
+    name: CPU tests (Python ${{ matrix.python }}, PyTorch ${{ matrix.torch }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        # Validate both the primary CI target and the package minimum.
-        torch: ["2.15.0", "2.10.0"]
+        include:
+          - python: "3.14"
+            torch: "2.15.0"
+          - python: "3.14"
+            torch: "2.10.0"
+          # Exercise the Python and PyTorch minimums together.
+          - python: "3.11"
+            torch: "2.10.0"
     env:
+      PYTHON_VERSION: ${{ matrix.python }}
       TORCH_VERSION: ${{ matrix.torch }}
 
     steps:
@@ -25,7 +32,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python }}
 
       - name: Install PyTorch CPU build
         run: python -m pip install "torch==${TORCH_VERSION}" --index-url https://download.pytorch.org/whl/cpu
@@ -35,7 +42,7 @@ jobs:
 
       - name: Check runtime and dependencies
         run: |
-          python -c "import os, sys, torch; print(sys.version); print('torch', torch.__version__); assert sys.version_info[:2] == (3, 14); assert torch.__version__.split('+')[0] == os.environ['TORCH_VERSION']"
+          python -c "import os, sys, torch; print(sys.version); print('torch', torch.__version__); assert '.'.join(map(str, sys.version_info[:2])) == os.environ['PYTHON_VERSION']; assert torch.__version__.split('+')[0] == os.environ['TORCH_VERSION']"
           python -m pip check
 
       - name: Run CPU tests

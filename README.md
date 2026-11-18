@@ -11,7 +11,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Dependency pins relaxed from `==` to `>=`
 - `fairscale` dependency removed — replaced with PyTorch built-in `torch.utils.checkpoint`
 - `numpy<2.0` cap removed
-- Requires Python 3.14+ and PyTorch 2.10+. CPU CI tests PyTorch 2.10.0 as the minimum and PyTorch 2.15.0 as the primary target. Compatible with Lightning 2.6+
+- Requires Python 3.11+ and PyTorch 2.10+. CPU CI tests Python 3.11 with PyTorch 2.10.0 and Python 3.14 with PyTorch 2.10.0 and 2.15.0. Compatible with Lightning 2.6+
 
 **Bug fixes:**
 - Fixed PDB `CONECT` serials when atoms are missing and `TER` records for noncontiguous chain IDs ([#40](https://github.com/Novel-Therapeutics/boltz-community/pull/40))
@@ -130,7 +130,7 @@ Pull requests are welcome! If you have a bug fix, test improvement, or compatibi
 
 ## Installation
 
-Use Python 3.14 or newer and PyTorch 2.10 or newer in a fresh environment.
+Use Python 3.11 or newer and PyTorch 2.10 or newer in a fresh environment.
 Compiled dependency minimums include Python 3.14 wheels. PyTorch's macOS
 wheels for these runtimes target Apple Silicon. On Intel macOS, use a Linux
 CPU environment or container.
