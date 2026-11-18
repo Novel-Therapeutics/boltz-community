@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.ditexact — the engine adapter of the DITEXACT levers (``opt/forward/ditexact/src/dx_token.py``) onto the diffusion module's TOKEN
 transformer (``DiffusionModule.token_transformer``: boltz.model.modules.diffusionv2 / transformersv2, 24 DiffusionTransformerLayers, fp32,
 autocast off).  Attached by ``boltz2_opt.worker_launch --attach ditexact`` right after ``boltz.model.modules.diffusionv2`` imports: it wraps

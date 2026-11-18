@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.rowpair — the memory mode's tensor-parallel line at ``--n_gpu P > 1`` (registry: ``rowpair_tp``, strategy F7.tensor_parallel):
 boltz 2.2.1's trunk with the pair representation ``z [1, N, N, 128]`` ROW-SHARDED across the P ranks of one node — rank r holds rows
 ``[r0, r1)`` of z (``z_loc [1, R, N, 128]``, fp32 storage) from the statement that creates it (``boltz2.py:420-429``: the pair init) through

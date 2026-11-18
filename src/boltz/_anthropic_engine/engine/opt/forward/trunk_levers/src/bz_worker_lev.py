@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """bz_worker.py — persistent Boltz-2 worker (Layer A): ONE process, model built ONCE, loops over (design, seed) pairs and reproduces the
 'single-design stock run' semantics of `boltz predict <one yaml> --seed s` EXACTLY (same RNG streams), without re-importing / re-loading
 the model per seed. boltz 2.2.1, inference path only. Every numerics-relevant setting is byte-identical to the stock CLI:
