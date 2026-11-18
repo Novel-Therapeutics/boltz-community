@@ -15,6 +15,9 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Requires PyTorch 2.4 or newer; CI tests the 2.4 minimum alongside the latest release. Compatible with Lightning 2.6+
 
 **Bug fixes:**
+- Fixed PDB `CONECT` serials when atoms are missing and `TER` records for noncontiguous chain IDs ([#40](https://github.com/Novel-Therapeutics/boltz-community/pull/40))
+- Fixed inconsistent subchain IDs across models in PDB templates ([#42](https://github.com/Novel-Therapeutics/boltz-community/pull/42))
+- Corrected symmetric-chain center-of-mass energies and gradients ([#43](https://github.com/Novel-Therapeutics/boltz-community/pull/43))
 - Fixed ROCm DDP crashes by allocating tensors directly on the target device instead of CPU-then-move ([#654](https://github.com/jwohlwend/boltz/pull/654))
 - Fixed `--write_full_pae` and `--write_full_pde` being ignored, and added matching `--no_write_full_pae` and `--no_write_full_pde` flags ([#602](https://github.com/jwohlwend/boltz/pull/602))
 - Fixed MSA CSV parsing removing paired duplicate sequences across different taxa ([#584](https://github.com/jwohlwend/boltz/pull/584))
@@ -72,6 +75,10 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Fixed mmCIF output of `cyclic: true` polymers missing the ring-closing bond ([#710](https://github.com/jwohlwend/boltz/issues/710), thanks to [@TSC2412](https://github.com/TSC2412))
 
 **Improvements:**
+- Fixed training mmCIF records and added `--msa-dir` to link existing processed protein MSAs ([#38](https://github.com/Novel-Therapeutics/boltz-community/pull/38))
+- `boltz predict` now exits nonzero if any prediction fails and preserves successful outputs ([#39](https://github.com/Novel-Therapeutics/boltz-community/pull/39))
+- Added `chain_ids` to confidence JSON to map score indices to original input chain labels ([#41](https://github.com/Novel-Therapeutics/boltz-community/pull/41))
+- Added Boltz-2 guidance for explicit intra-chain covalent bonds with `--use_potentials` ([#44](https://github.com/Novel-Therapeutics/boltz-community/pull/44))
 - Published to PyPI as [`boltz-community`](https://pypi.org/project/boltz-community/): `pip install boltz-community` or `uv add boltz-community` ([#12](https://github.com/Novel-Therapeutics/boltz-community/issues/12))
 - `boltz predict` now aborts when any input fails processing; `--skip_bad_inputs` skips them instead ([c4ab80c](https://github.com/Novel-Therapeutics/boltz-community/commit/c4ab80c))
 - Deferred heavy imports (torch, rdkit, Lightning) so CLI help and input validation start instantly ([396275a](https://github.com/Novel-Therapeutics/boltz-community/commit/396275a))
