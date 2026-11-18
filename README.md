@@ -122,6 +122,8 @@ Thanks to everyone whose code, upstream PRs or reports are in this fork:
 - [@Michaelihc](https://github.com/Michaelihc): affinity-to-ΔG documentation
 - [@TSC2412](https://github.com/TSC2412): cyclic D-peptide stereochemistry report
 - [@MichalMalyska](https://github.com/MichalMalyska): FlashPairformer integration and H100 native-path validation
+- [@AubakirovArman](https://github.com/AubakirovArman) (Arman Aubakirov): multi-model templates, intra-chain covalent guidance, prediction failure reporting, training metadata, and confidence chain labels
+- [@davrens101](https://github.com/davrens101) (Davis Rens): center-of-mass potential and PDB connectivity fixes
 
 ## Contributing
 
