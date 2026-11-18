@@ -194,6 +194,10 @@ def _pin_word(unit: str):
         return "pin:no_cuda"
     cc = tuple(torch.cuda.get_device_capability(0))
     if cc not in EXACT_PIN["cc"][unit]:
+        from boltz.upstream.blackwell import admits_exact_cell
+        module = importlib.import_module(CORE_PWA2 if unit == "pwa2x" else f"{PACKAGE}.trans2")
+        if admits_exact_cell(module, unit, cc, torch.__version__, torch.version.cuda):
+            return None
         return f"pin:cc{cc[0]}{cc[1]}"
     if not torch.__version__.startswith(EXACT_PIN["torch"]):
         return f"pin:torch{torch.__version__.split('+')[0]}"
