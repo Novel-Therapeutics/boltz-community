@@ -13,7 +13,6 @@ class OuterProductMeanTest(unittest.TestCase):
         self.c_hidden = 16
         self.c_out = 64
 
-        torch.set_grad_enabled(False)
         pytorch_lightning.seed_everything(1100)
         self.layer = OuterProductMean(self.c_in, self.c_hidden, self.c_out)
 
