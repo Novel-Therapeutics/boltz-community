@@ -250,7 +250,7 @@
     "model/loss/validation.py": "4b2f015e7cd217c62fba57f2323ee3dee5b216a2764b4c8548b9d1cd0362188a",
     "model/models/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "model/models/boltz1.py": "f77e5351bb5670ae4c7f907228cfe25ccfdb3b16a38bf44c5e10f17a6a92da76",
-    "model/models/boltz2.py": "5a44c42564bde0274cacdd03e8df677b4cd183aab2180accedd239542da37476",
+    "model/models/boltz2.py": "0a41a51c2f68e690e6e10b40fd6191b91d49adf62bae8d2054c1ac421ae131b1",
     "model/modules/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "model/modules/affinity.py": "164b48db0ae40eab2318724ebafcd5ad92bbf0c38f8d4eb940dd25eac07540f4",
     "model/modules/confidence.py": "32fa6f5a8363ee7b0119c4eb151b07a87fcc28088f96988aaaf8178c9c5a9570",

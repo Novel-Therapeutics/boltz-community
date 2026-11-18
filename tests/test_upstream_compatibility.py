@@ -393,3 +393,59 @@ assert stock_failures(root, "structure") == {"structure-failed"}
 assert stock_failures(root, "affinity") == {"affinity-failed"}
 """
     subprocess.run([sys.executable, "-c", program, str(tmp_path)], check=True)
+
+
+@pytest.mark.parametrize("has_extra_summaries", [True, False])
+def test_predict_step_accepts_original_sharded_confidence_fields(has_extra_summaries):
+    import torch
+
+    from boltz.model.models.boltz2 import Boltz2
+
+    scores = {
+        key: torch.tensor([0.4])
+        for key in (
+            "s",
+            "z",
+            "sample_atom_coords",
+            "pde",
+            "plddt",
+            "complex_plddt",
+            "complex_iplddt",
+            "complex_pde",
+            "complex_ipde",
+            "pae",
+            "ptm",
+            "iptm",
+            "ligand_iptm",
+            "protein_iptm",
+        )
+    }
+    scores["pair_chains_iptm"] = {0: {0: scores["ptm"]}}
+    extra = ("complex_pae", "complex_ipae", "chains_pae", "pair_chains_pae")
+    summaries = (*extra, *(f"{key}_unweighted" for key in extra))
+    if has_extra_summaries:
+        scores.update({key: torch.tensor([0.1]) for key in summaries})
+
+    class Model:
+        predict_args = dict(
+            recycling_steps=1,
+            sampling_steps=1,
+            diffusion_samples=1,
+            max_parallel_samples=1,
+        )
+        confidence_prediction = True
+        affinity_prediction = False
+        alpha_pae = 1.0
+
+        def __call__(self, batch, **kwargs):
+            return scores
+
+    mask = torch.tensor([[True]])
+    result = Boltz2.predict_step(
+        Model(), {"atom_pad_mask": mask, "token_pad_mask": mask}, 0
+    )
+    torch.testing.assert_close(result["confidence_score"], torch.tensor([0.4]))
+    assert result["pair_chains_iptm"] == scores["pair_chains_iptm"]
+    assert set(summaries).intersection(result) == (
+        set(summaries) if has_extra_summaries else set()
+    )

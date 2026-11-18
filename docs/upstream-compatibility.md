@@ -74,8 +74,10 @@ Within the explicitly selected engine process:
   pairing-key behavior and query-trimming fallback. These change model inputs;
   preserving them would change the tensors the engine receives. The engine uses the
   fork's multi-model template parsing and PDB connectivity and termination fixes.
-  Its confidence JSON includes original input chain labels and the fork's extra
-  PAE and structure-check fields, including with writer overlap. The engine
+  Its confidence JSON includes original input chain labels and structure checks.
+  The single-GPU head also supplies the fork's extra PAE summaries, including
+  with writer overlap. The original multi-GPU head omits those extra summaries.
+  The engine
   prepares inputs through the original CLI and applies its per-input and per-seed
   failure and provider rules. In `off`, writer-recorded skips count as failed
   units while completed structures remain eligible for affinity. A missing
