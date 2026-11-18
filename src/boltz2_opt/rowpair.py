@@ -935,10 +935,7 @@ def _opm_b_for_gather(b):
     (2 bytes a value; ``outer_fn``'s einsum casts its operands to bf16 under the same autocast: the values it reads are unchanged). A ``b`` that
     is not bf16-exact, or no autocast (the CPU logic tests), crosses as it stands. Returns ``(tensor, dtype word)``; census ``opm_b_gather_dtype=``."""
     import torch
-    try:
-        autocast = bool(torch.is_autocast_enabled(b.device.type))
-    except TypeError:                                                       # torch < 2.4 spells the CUDA query without the device argument
-        autocast = bool(torch.is_autocast_enabled()) and b.is_cuda
+    autocast = torch.is_autocast_enabled(b.device.type)
     if autocast and b.dtype == torch.float32:
         b16 = b.to(torch.bfloat16)
         if torch.equal(b16.to(torch.float32), b):

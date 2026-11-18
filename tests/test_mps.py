@@ -71,13 +71,9 @@ def _find_files(pred_dir, extension):
     return found
 
 
-def test_autocast_device_type_mps():
-    """autocast_device_type returns a valid device type string for MPS."""
-    from boltz.model.modules.utils import autocast_device_type
-
-    result = autocast_device_type("mps")
-    # Must be accepted by torch.autocast without raising
-    with torch.autocast(result, enabled=False):
+def test_autocast_can_be_disabled_mps():
+    """MPS accepts its own device type when autocast is disabled."""
+    with torch.autocast("mps", enabled=False):
         pass
 
 
