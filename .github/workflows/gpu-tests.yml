@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      suite:
+        description: GPU validation suite
+        type: choice
+        options:
+          - full
+          - cuda-extra
+        default: full
 
 jobs:
   gpu-tests:
@@ -49,11 +57,47 @@ jobs:
           PY
           nvidia-smi
 
+      - name: Smoke test the CUDA extra
+        if: inputs.suite == 'cuda-extra'
+        run: |
+          python - <<'PY'
+          from importlib.metadata import version
+
+          import torch
+
+          for package in (
+              "cuequivariance-torch",
+              "cuequivariance-ops-cu13",
+              "cuequivariance-ops-torch-cu13",
+          ):
+              print(package, version(package), flush=True)
+
+          print(torch.cuda.get_device_name(), torch.cuda.get_device_capability(), flush=True)
+          identity = torch.eye(16, device="cuda")
+          torch.testing.assert_close(identity @ identity, identity)
+          print("PyTorch CUDA matmul passed", flush=True)
+
+          from cuequivariance_ops_torch import triangle_attention
+
+          torch.manual_seed(0)
+          with torch.no_grad():
+              q, k, v = (torch.randn(1, 2, 1, 64, 32, device="cuda", dtype=torch.float16) for _ in range(3))
+              bias = torch.zeros(1, 1, 1, 64, 64, device="cuda")
+              scale = 32 ** -0.5
+              expected = ((q.float() @ k.float().transpose(-1, -2)) * scale).softmax(-1) @ v.float()
+              actual = triangle_attention(q, k, v, bias, scale=scale)
+              torch.cuda.synchronize()
+              torch.testing.assert_close(actual.float(), expected, rtol=0.01, atol=0.005)
+          print("cuEquivariance triangle attention matched the PyTorch reference", flush=True)
+          PY
+
       - name: Cache model checkpoints
+        if: inputs.suite != 'cuda-extra'
         uses: actions/cache@v6
         with:
           path: ~/.boltz
           key: boltz-checkpoints-v1
 
       - name: Run GPU tests
+        if: inputs.suite != 'cuda-extra'
         run: pytest -m "slow or regression" -v --tb=short
