@@ -6,7 +6,7 @@ backend-path = ["."]
 [project]
 name = "boltz-community"
 version = "2.14.0"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 description = "Community-maintained fork of Boltz with bug fixes, broader compatibility, and CI"
 readme = "README.md"
 license = { text = "MIT" }
@@ -32,6 +32,9 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -88,7 +91,7 @@ cuda = [
 [tool.ruff]
 src = ["src"]
 extend-exclude = ["conf.py"]
-target-version = "py314"
+target-version = "py311"
 lint.select = ["ALL"]
 lint.ignore = [
     "COM812",  # Conflicts with the formatter

@@ -13,7 +13,7 @@ backend-path = ["."]
 name = "boltz2_opt"
 dynamic = ["version"]
 description = "Boltz-2 inference optimizations: modes exact/fast/big on the persistent-worker route, boltz predict's own options, stock caller (off), activation report"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 classifiers = ["Private :: Do Not Upload"]
 dependencies = []
 
