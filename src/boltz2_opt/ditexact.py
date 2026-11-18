@@ -84,6 +84,16 @@ def _dx():
         import dx_token                                   # noqa: E402
         if os.path.dirname(os.path.realpath(dx_token.__file__)) != os.path.realpath(KIT_SRC):
             raise RuntimeError(f"dx_token imported from {dx_token.__file__}, not the kit tree {KIT_SRC}")
+        import torch
+        from boltz.upstream.blackwell import admits_exact_cell
+        if torch.cuda.is_available() and admits_exact_cell(
+            dx_token, "dit", torch.cuda.get_device_capability(0),
+            torch.__version__, torch.version.cuda,
+        ):
+            dx_token.PROVEN_CC = {
+                word: capabilities | {(12, 0)}
+                for word, capabilities in dx_token.PROVEN_CC.items()
+            }
         _STATE["module"] = dx_token
     return _STATE["module"]
 

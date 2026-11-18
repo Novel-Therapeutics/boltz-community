@@ -27,6 +27,26 @@ def test_layernorm_requires_matching_runtime_and_source(tmp_path, monkeypatch):
     assert not blackwell.admits_layernorm(package, (12, 0), "2.12.0+cu130")
 
 
+@pytest.mark.parametrize("cell", ["dit", "trans2x", "pwa2x"])
+def test_exact_cell_admission_requires_probed_source_and_stack(tmp_path, monkeypatch, cell):
+    import hashlib
+
+    source = tmp_path / "cell.py"
+    source.write_bytes(b"qualified")
+    module = SimpleNamespace(__file__=str(source))
+    monkeypatch.setattr(
+        blackwell, "EXACT_CELL_FILES", {cell: hashlib.sha256(b"qualified").hexdigest()},
+    )
+    assert blackwell.admits_exact_cell(module, cell, (12, 0), "2.12.0+cu130", "13.0")
+    assert not blackwell.admits_exact_cell(module, cell, (10, 0), "2.12.0+cu130", "13.0")
+    assert not blackwell.admits_exact_cell(module, cell, (12, 0), "2.12.1+cu130", "13.0")
+    assert not blackwell.admits_exact_cell(module, cell, (12, 0), "2.12.0+cu130", "13.1")
+    source.write_bytes(b"changed")
+    assert not blackwell.admits_exact_cell(module, cell, (12, 0), "2.12.0+cu130", "13.0")
+    source.unlink()
+    assert not blackwell.admits_exact_cell(module, cell, (12, 0), "2.12.0+cu130", "13.0")
+
+
 def test_blackwell_opm_preserves_fusion_with_smaller_shared_tile():
     source = dict(BI=4, BJ=8, BK=64, BZ=32, num_stages=3, TMA=True, PM=1, FP=True)
     provider = SimpleNamespace(

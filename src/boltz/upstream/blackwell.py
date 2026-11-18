@@ -10,6 +10,27 @@ EXACTLN_FILES = {
     "exactln_fwd.cu": "8283eb74c962c96f8eb4b5f082cf5c7eaeb4ecdf3f2ebccd70f2424d89d79df1",
 }
 OPM_CONFIG = "community_sm120"
+EXACT_CELL_FILES = {
+    "dit": "8a424aa702c5d62c4dcffd6b20ec0d1f2f38748a6fba0842a57d2558fae60e64",
+    "trans2x": "04b5d8798d90243705c056e2aaf00b894f9f4f4ca4a404af7d7fbb07e02712fd",
+    "pwa2x": "0331762dc9e9dc31d5381bcac282e9a1544e291207f0257acf634ff0b9c7a701",
+}
+
+
+def admits_exact_cell(module, cell, cc, torch_version, cuda_version):
+    """Qualify only the probed Blackwell source/stack; runtime locks still apply."""
+    if (
+        tuple(cc) != (12, 0)
+        or str(torch_version).split("+")[0] != "2.12.0"
+        or cuda_version != "13.0"
+    ):
+        return False
+    source = Path(module.__file__)
+    return (
+        cell in EXACT_CELL_FILES
+        and source.is_file()
+        and hashlib.sha256(source.read_bytes()).hexdigest() == EXACT_CELL_FILES[cell]
+    )
 
 
 def admits_layernorm(package, cc, torch_version):

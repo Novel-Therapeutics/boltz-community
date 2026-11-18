@@ -54,6 +54,7 @@ def main():
         "The worker keeps named failures distinct from complete output files.",
         "The off route accounts for named writer failures without abandoning successful records.",
         "The Python 3.14 runtime upgrade removes legacy PyTorch autocast fallbacks and preserves numerical pins.",
+        "Source- and runtime-scoped sm_120 admission retains exact kernel bit checks; the fused OPM default uses a smaller shared-memory tile.",
     ]
     contract_path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
     print("Recorded integrated engine, assets and fork source identities")
