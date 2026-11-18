@@ -148,7 +148,7 @@ def face_word(cc, torch_version) -> Optional[str]:
     except LN.Refusal as e:
         from boltz.upstream.blackwell import admits_layernorm
 
-        architecture_refusal = str(getattr(e, "kind", "")).startswith("cc:12.0_not_proven")
+        architecture_refusal = str(getattr(e, "kind", "")).startswith("cc:12.0 not proven")
         if not architecture_refusal or not admits_layernorm(LN.carried_module(CORE_ROW), cc, torch_version):
             return _word(str(getattr(e, "kind", e)))
     pin = getattr(LN.carried_module(CORE_ROW), "TORCH_PIN", None)
