@@ -193,7 +193,7 @@ def test_original_profile_parser_and_numerics_have_not_changed():
         if isinstance(node, ast.FunctionDef) and node.name in expected
     }
     assert actual == expected
-    for name in ("modes.py", "settings.py", "report.py", "worker.py"):
+    for name in ("modes.py", "settings.py", "report.py"):
         assert (
             source_contract.digest(package / name)
             == c["upstream_engine_files"]["opt/boltz2_opt/" + name]
@@ -449,3 +449,120 @@ def test_predict_step_accepts_original_sharded_confidence_fields(has_extra_summa
     assert set(summaries).intersection(result) == (
         set(summaries) if has_extra_summaries else set()
     )
+
+
+@pytest.mark.parametrize(
+    "existing", ["boltz_results_item", "by_seed", "_kit", "pred_worker.log"]
+)
+def test_engine_preserves_existing_prediction_state(tmp_path, existing):
+    from boltz.upstream.output import RUN_MARKER, OutputConflict, reserve_engine_output
+
+    old = tmp_path / existing
+    old.write_bytes(b"historical result")
+    with pytest.raises(OutputConflict, match=existing):
+        reserve_engine_output(tmp_path, "big")
+    assert old.read_bytes() == b"historical result"
+    assert not (tmp_path / RUN_MARKER).exists()
+
+
+def test_engine_claim_blocks_native_and_alias_reuse(tmp_path):
+    import json
+
+    from boltz.upstream.output import (
+        RUN_MARKER,
+        OutputConflict,
+        prepare_native_output,
+        reserve_engine_output,
+    )
+
+    path = tmp_path / "run"
+    assert reserve_engine_output(path, "off") == path.resolve()
+    marker = path / RUN_MARKER
+    recorded = marker.read_bytes()
+    assert json.loads(recorded) == {
+        "mode": "off",
+        "source_contract_sha256": source_contract.digest(source_contract.CONTRACT_PATH),
+    }
+    alias = tmp_path / "alias"
+    alias.symlink_to(path, target_is_directory=True)
+    with pytest.raises(OutputConflict, match="already has an engine run"):
+        reserve_engine_output(alias, "fast")
+    with pytest.raises(OutputConflict, match="belongs to a boltz2-opt run"):
+        prepare_native_output(alias, "item")
+    assert not (path / "boltz_results_item").exists()
+    assert marker.read_bytes() == recorded
+
+
+def test_native_output_retains_unmarked_resume_paths(tmp_path):
+    from boltz.upstream.output import (
+        OutputConflict,
+        prepare_native_output,
+        reserve_engine_output,
+    )
+
+    result = prepare_native_output(tmp_path, "item")
+    data = result / "existing.json"
+    data.write_bytes(b"native result")
+    with pytest.raises(OutputConflict, match="already contains prediction state"):
+        reserve_engine_output(tmp_path, "exact")
+    assert data.read_bytes() == b"native result"
+    assert prepare_native_output(tmp_path, "item") == result
+
+
+def test_concurrent_engine_claims_have_one_winner(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from boltz.upstream.output import OutputConflict, reserve_engine_output
+
+    ready = Barrier(2)
+
+    def try_claim(mode):
+        ready.wait()
+        try:
+            reserve_engine_output(tmp_path, mode)
+        except OutputConflict:
+            return False
+        return True
+
+    with ThreadPoolExecutor(max_workers=2) as threads:
+        assert sum(threads.map(try_claim, ("exact", "big"))) == 1
+
+
+def test_worker_named_failure_takes_precedence_over_present_outputs():
+    from boltz2_opt.skipped import units
+
+    accounting = units(
+        [{"name": "failed"}, {"name": "complete"}],
+        [2],
+        {},
+        missing=lambda *_: None,
+        failed={("failed", 2): "structure batch skipped"},
+    )
+    assert accounting["ok"] == 1
+    assert accounting["failed_units"] == [
+        {"name": "failed", "seed": 2, "reason": "structure batch skipped"}
+    ]
+
+
+def test_native_rechecks_a_claim_made_during_directory_setup(monkeypatch, tmp_path):
+    from boltz.upstream.output import (
+        RUN_MARKER,
+        OutputConflict,
+        prepare_native_output,
+        reserve_engine_output,
+    )
+
+    result = tmp_path / "boltz_results_item"
+    mkdir = Path.mkdir
+
+    def claim_then_create(path, *args, **kwargs):
+        if path == result:
+            reserve_engine_output(tmp_path, "off")
+        return mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", claim_then_create)
+    with pytest.raises(OutputConflict, match="belongs to a boltz2-opt run"):
+        prepare_native_output(tmp_path, "item")
+    assert not result.exists()
+    assert (tmp_path / RUN_MARKER).is_file()

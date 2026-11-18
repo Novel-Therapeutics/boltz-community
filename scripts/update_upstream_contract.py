@@ -50,6 +50,8 @@ def main():
         "The core pin, flags, profiles, kernels and numerical source are preserved.",
         "Worker failure accounting handles the fork writer's skipped-batch exception.",
         "Overlapped output preserves the fork's optional confidence and structure checks.",
+        "The engine reserves its output root before either prediction route launches.",
+        "The worker keeps named failures distinct from complete output files.",
         "The off route accounts for named writer failures without abandoning successful records.",
     ]
     contract_path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")

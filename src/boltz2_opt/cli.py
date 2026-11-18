@@ -140,6 +140,9 @@ def cmd_pred_off(a) -> int:
         rep.set_rc(rep.EXIT_USAGE); return _usage("--mode off takes one input path — a YAML / FASTA file or a directory of them — as boltz predict does (one process per call)")
     if a.seeds is not None:
         rep.set_rc(rep.EXIT_USAGE); return _usage("--seeds belongs to the worker route (several seeds in one pass); --mode off takes boltz predict's --seed S (one process per call)")
+    if any(arg.split("=", 1)[0] == "--out_dir" for arg in a.stock_args):
+        rep.set_rc(rep.EXIT_USAGE)
+        return _usage("set --out_dir once, before --; forwarded --out_dir is not supported")
     flags = knob_flags(a)
     try:
         given = settings.given(flags); detl = det.describe(a.det)    # validated by name (a value below its minimum, a bad output_format, an unknown --det level)
@@ -150,8 +153,14 @@ def cmd_pred_off(a) -> int:
     if frozen:
         rep.set_rc(rep.EXIT_NOT_ACTIVE); rep.say(rep.not_active_line("frozen weights: " + "; ".join(frozen))); return rep.EXIT_NOT_ACTIVE
     rep.say(stack.weights_line(stack.weights_status()))   # the checkpoint's digest status, named (pinned | unknown); an unknown checkpoint proceeds
+    from boltz.upstream.output import OutputConflict, reserve_engine_output
+
+    try:
+        a.out_dir = str(reserve_engine_output(a.out_dir, "off"))
+    except (OutputConflict, OSError) as error:
+        rep.set_rc(rep.EXIT_USAGE)
+        return _usage(str(error))
     argv, env = stock_command(a.input[0], a.out_dir, flags, a.stock_args, getattr(a, "knob_order", None), a.det)
-    os.makedirs(a.out_dir, exist_ok=True)
     rep.say(rep.not_active_line("mode off: stock — the stock CLI in a clean subprocess (proof: the printed `[boltz2-opt stock] proven stock` line)"))
     census_path = os.path.join(os.path.abspath(a.out_dir), KERNELS_CENSUS)
     import time as _time

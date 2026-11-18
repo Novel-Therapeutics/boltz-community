@@ -36,6 +36,14 @@ No external engine checkout, stock Boltz wheel, extraction cache or
 `boltz2_opt` distribution is installed, uninstall it **before** installing this
 community distribution; both distributions own the same Python package.
 
+Use a fresh output directory for each engine `pred` or `warm` invocation.
+Existing native or engine results are rejected before launch. The directory
+keeps the original engine layout and records the mode and source contract in
+`.boltz2-opt-run.json`. Keep the marker with the results, including after a failed
+or interrupted attempt. Native `boltz predict` uses its usual resume behavior
+in a separate directory. Pass `--out_dir` before the `--` stock-argument separator.
+The engine checks each seed in a worker call for a distinct output path.
+
 ## Compatibility boundary and tradeoffs
 
 The integration verifies its packaged engine and numerical source against an

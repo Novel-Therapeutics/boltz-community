@@ -126,6 +126,10 @@ def run(mode: str, yamls: List[str], out_dir: str, seeds: List[int], *, tag: Opt
         items = items_from_yamls(yamls)
     except (FileNotFoundError, ValueError) as e:
         rep.say(rep.not_active_line(f"inputs: {e}")); rep.set_rc(rep.EXIT_USAGE); return rep.EXIT_USAGE
+    if len(seeds) != len(set(seeds)):
+        rep.say(rep.not_active_line("duplicate seeds share the same output path; supply each seed once"))
+        rep.set_rc(rep.EXIT_USAGE)
+        return rep.EXIT_USAGE
     aff = set(affinity_inputs(items))                                # units of these inputs are complete only with upstream's affinity_<name>.json (the worker runs that leg)
     try:
         eff = _settings.worker_settings(mode, settings)                  # `boltz predict`'s own options over upstream's defaults; a knob the worker line cannot serve is named
@@ -133,7 +137,14 @@ def run(mode: str, yamls: List[str], out_dir: str, seeds: List[int], *, tag: Opt
         rep.say(rep.not_active_line(f"settings: {e}")); rep.set_rc(rep.EXIT_USAGE); return rep.EXIT_USAGE
     modes.set_run_drops(eff["run_off"]); modes.set_n_gpu(P); row = modes.resolve(mode)       # levers this run takes off by name for an option they cannot carry (modes.RUN_DROPS; {} = the row as tabled):
                                                                       # stated once, before staging — every resolve() of this process (stage, child_env, evidence, the lines) agrees
-    out_dir = os.path.abspath(out_dir); os.makedirs(out_dir, exist_ok=True)
+    from boltz.upstream.output import OutputConflict, reserve_engine_output
+
+    try:
+        out_dir = str(reserve_engine_output(out_dir, row["mode"]))
+    except (OutputConflict, OSError) as error:
+        rep.say(rep.not_active_line(str(error)))
+        rep.set_rc(rep.EXIT_USAGE)
+        return rep.EXIT_USAGE
     tag = tag or "pred"
     workdir = os.path.join(out_dir, "_kit")
     try:

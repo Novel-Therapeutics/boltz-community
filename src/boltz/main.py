@@ -1571,9 +1571,12 @@ def predict(  # noqa: C901, PLR0915, PLR0912
 
     # Create output directories
     data = Path(data).expanduser()
-    out_dir = Path(out_dir).expanduser()
-    out_dir = out_dir / f"boltz_results_{data.stem}"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    from boltz.upstream.output import OutputConflict, prepare_native_output
+
+    try:
+        out_dir = prepare_native_output(Path(out_dir).expanduser(), data.stem)
+    except OutputConflict as error:
+        raise click.ClickException(str(error)) from error
 
     # Download necessary data and model
     if model == "boltz1":

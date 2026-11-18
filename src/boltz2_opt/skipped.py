@@ -114,21 +114,25 @@ def next_ready(k: int, n: int, skipped_at: Callable[[int], bool]) -> int:
 
 
 def units(items: list, seeds: list, skipped: dict, missing: Callable[[str, int], Optional[str]], failed: Optional[dict] = None) -> dict:
-    """The completeness account of a worker-route run: every expected (item, seed) unit is ok (``missing(name, seed)`` is None: every expected
-    file is there — worker.expected_files: ``<name>_model_0.cif``, plus ``affinity_<name>.json`` for an input declaring the affinity property) or
-    failed with a named reason — the worker's SKIPPED reason when the stock parser skipped the input, else the reason the worker recorded for
-    that very unit (``failed`` = {(name, seed): reason} from its log's ``failed`` entries: boltz's own batch skip on CUDA out of memory,
-    oom_reason), else outputs short naming the first missing file. Counts close: ``ok + failed == expected``. ``skipped`` = {name: reason}
-    from the worker log's ``skipped`` entries."""
+    """Account for each expected (item, seed), prioritizing logged skips and failures.
+
+    A unit without a logged failure is complete when ``missing(name, seed)``
+    returns None. Otherwise the first missing output names the failure.
+    ``skipped`` maps input names to parser skips. ``failed`` maps (name, seed)
+    pairs to worker failures. Counts close: ``ok + failed == expected``.
+    """
     ok = 0; failed_units = []; named = failed or {}
     for it in items:
         for s in seeds:
-            lack = missing(it["name"], s)
-            if lack is None:
-                ok += 1
-            else:
-                why = skipped.get(it["name"]) or named.get((it["name"], int(s))) or f"outputs short (no {lack} under by_seed/{it['name']}/s{s}/)"
-                failed_units.append({"name": it["name"], "seed": s, "reason": why})
+            name = it["name"]
+            why = skipped.get(name) or named.get((name, int(s)))
+            if not why:
+                lack = missing(name, s)
+                if lack is None:
+                    ok += 1
+                    continue
+                why = f"outputs short (no {lack} under by_seed/{name}/s{s}/)"
+            failed_units.append({"name": name, "seed": s, "reason": why})
     n = ok + len(failed_units)
     return {"expected": n, "ok": ok, "failed": len(failed_units), "status": "complete" if not failed_units else "incomplete",
             "failed_units": failed_units, "skipped": [{"name": k, "reason": v} for k, v in skipped.items()],
