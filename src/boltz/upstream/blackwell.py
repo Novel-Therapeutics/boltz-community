@@ -17,6 +17,20 @@ EXACT_CELL_FILES = {
 }
 
 
+def stock_triangle_bias_core(module, x_ln, core):
+    """Keep cuBLAS's narrow bias projection while the other block stages fuse."""
+    # The inherited fused projection changes a few BF16 bias values on sm_120.
+    # Match the stock Linear's GEMM shape and rounding, in the attention frame.
+    bias = module.linear(x_ln).movedim(-1, -3).unsqueeze(-4)
+    if x_ln.dim() == 3:
+        bias = bias.unsqueeze(0)
+
+    def attention(q, k, v, _provider_bias, mask, scale):
+        return core(q, k, v, bias, mask, scale)
+
+    return attention
+
+
 def admits_exact_cell(module, cell, cc, torch_version, cuda_version):
     """Qualify only the probed Blackwell source/stack; runtime locks still apply."""
     if (

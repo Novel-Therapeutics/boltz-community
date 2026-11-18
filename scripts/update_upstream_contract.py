@@ -55,6 +55,7 @@ def main():
         "The off route accounts for named writer failures without abandoning successful records.",
         "The Python 3.14 runtime upgrade removes legacy PyTorch autocast fallbacks and preserves numerical pins.",
         "Source- and runtime-scoped sm_120 admission retains exact kernel bit checks; the fused OPM default uses a smaller shared-memory tile.",
+        "On sm_120 the exact triangle block keeps the stock narrow bias projection while retaining fused Q/K/V/gate projections and epilogue.",
     ]
     contract_path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
     print("Recorded integrated engine, assets and fork source identities")

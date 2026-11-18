@@ -11,7 +11,8 @@
     "The worker keeps named failures distinct from complete output files.",
     "The off route accounts for named writer failures without abandoning successful records.",
     "The Python 3.14 runtime upgrade removes legacy PyTorch autocast fallbacks and preserves numerical pins.",
-    "Source- and runtime-scoped sm_120 admission retains exact kernel bit checks; the fused OPM default uses a smaller shared-memory tile."
+    "Source- and runtime-scoped sm_120 admission retains exact kernel bit checks; the fused OPM default uses a smaller shared-memory tile.",
+    "On sm_120 the exact triangle block keeps the stock narrow bias projection while retaining fused Q/K/V/gate projections and epilogue."
   ],
   "engine_files": {
     "LICENSE": "8fb5aa0df77ed9762b84c7acd3f810080de64d8781335c25a93c3c054a6aa53a",
@@ -85,7 +86,7 @@
     "msa2.py": "87c9b9ce091e1a50ddd246ec1141ceeb837d55b9ec795bf0f97dca3ab25580d7",
     "msa2_probe.py": "9fbd4ce31c92d3e713c9bf51e0f02fabcf8a48a824238220e4ab2c8ee75e1e37",
     "msa_kernels.py": "db95b3103ac0447f25c433940d3c2e277720411d68ad5e3bd839f7355b746386",
-    "pairblock.py": "0e2cd0c15d7a7cacd8e9b74e364d473201f3364c429ffaac87ad7fb9283efa3a",
+    "pairblock.py": "fa3a71dfb0fa94e5ad2dae1e31acce419ab083eb1316f9b56fc0d4afa40c64e4",
     "pairfuse.py": "70f4fba95c28c1913379c6fb04a0982df3e8b1c7fa161bf3d96ccc002fe51ffd",
     "phase.py": "86a0a931c483fdf5a18834c02eb59a3a60fdb07effd121ded54a9ece89dd3d56",
     "precision.py": "2b72d89785c9437f838d6f4c0096bdec345742280591bff5ec773bb5be3359f9",
@@ -280,7 +281,7 @@
     "scripts/fix_macos_libomp.py": "16320ca6be6a6df00cb0ec656e27554cbe3d3ab227164f9a10b3e821f6930e40",
     "upstream/__init__.py": "cb24737d484ed7e126729a82bd01f14b110a2f498dca8e8dfdeda1e9335be4f6",
     "upstream/__main__.py": "ec428a0a4cb20dfff18d98989480f490e36bfe1fc1d74d002892c8c1281aa9a9",
-    "upstream/blackwell.py": "3d87b8a241a2b9ba258e030433a0290553fca5bb92c21484d713e6337414825e",
+    "upstream/blackwell.py": "11cb1d6419ef0c13f3ca1ed057afeeea24b188695c75cbcfa69c239d4c669778",
     "upstream/bootstrap.py": "1ed24edf5108676b4cddf2a0e5424a6acf9b81f84c1261e01a70fed3a86cd97a",
     "upstream/contract.py": "e1a8bf62b1ff0ecb123e43e506aec269337e12b26405051356fbecc50b82a1af",
     "upstream/output.py": "e14f92c5536c9d5cfbf685297f7ec9e5ee697631414800de379e933cb905ddf7",
