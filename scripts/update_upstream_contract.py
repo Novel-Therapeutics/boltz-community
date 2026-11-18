@@ -32,7 +32,9 @@ def main():
     current["engine_files"] = {
         path.relative_to(root).as_posix(): digest(path)
         for path in sorted(root.rglob("*"))
-        if path.is_file() and "__pycache__" not in path.parts
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and not any(part.startswith(".") for part in path.relative_to(root).parts)
     }
     current["engine_package_files"] = {
         path.name: digest(path) for path in sorted(package.iterdir()) if path.is_file()
@@ -48,6 +50,7 @@ def main():
         "The core pin, flags, profiles, kernels and numerical source are preserved.",
         "Worker failure accounting handles the fork writer's skipped-batch exception.",
         "Overlapped output preserves the fork's optional confidence and structure checks.",
+        "The off route accounts for named writer failures without abandoning successful records.",
     ]
     contract_path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
     print("Recorded integrated engine, assets and fork source identities")

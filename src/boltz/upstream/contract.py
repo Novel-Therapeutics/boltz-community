@@ -46,7 +46,8 @@ def verify_loaded_engine(root: Path) -> None:
 
 def prepare() -> tuple[Path, Path, dict]:
     """Verify integrated sources, then set transport paths for child processes."""
-    c = contract()
+    contract_source = CONTRACT_PATH.read_bytes()
+    c = json.loads(contract_source)
     fork = Path(__file__).resolve().parents[1]
     root = engine_root()
     stock = root.parent / "reference"
@@ -70,6 +71,7 @@ def prepare() -> tuple[Path, Path, dict]:
         "pinned": False,
         "compatible_fork": True,
         "integrated_engine": True,
+        "source_contract_sha256": hashlib.sha256(contract_source).hexdigest(),
         "reference_commit": c["upstream_commit"],
         "reference_wheel_sha256": c["stock_wheel_sha256"],
         "fork_source_sha256": hashlib.sha256(
@@ -78,6 +80,7 @@ def prepare() -> tuple[Path, Path, dict]:
         "numeric_overlays": c["numeric_modules"],
         "function_overlays": [
             "boltz.model.models.boltz2.Boltz2.forward",
+            "boltz.model.models.boltz2.Boltz2.predict_step (structure checks)",
             "boltz.data.feature.featurizerv2.construct_paired_msa",
             "boltz.data.feature.featurizerv2.process_residue_constraint_features",
             "boltz.data.feature.featurizerv2.process_chain_feature_constraints",

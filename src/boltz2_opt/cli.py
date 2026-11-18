@@ -156,12 +156,27 @@ def cmd_pred_off(a) -> int:
     census_path = os.path.join(os.path.abspath(a.out_dir), KERNELS_CENSUS)
     import time as _time
     t0 = _time.time()
-    r = subprocess.run(argv, env=env)
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+
+    from boltz.upstream.stock_pred import stock_failures
+
+    with TemporaryDirectory(prefix="boltz-stock-") as failure_dir:
+        split = argv.index("--")
+        child_argv = argv[:split] + ["--prediction-failure-dir", failure_dir] + argv[split:]
+        r = subprocess.run(child_argv, env=env)
+        failed_predictions = {}
+        if r.returncode == 0:
+            failed_predictions = {
+                name: f"upstream skipped {phase} batch: CUDA out of memory"
+                for phase in ("structure", "affinity")
+                for name in stock_failures(Path(failure_dir), phase)
+            }
     try:                                                              # fold the pass's KERNELS record into the exit rule and the run record; it leaves with the verb (finally)
         census = kernels.read_record(census_path, since=t0)   # this pass's KERNELS record (a record written before the launch is an earlier pass's: ignored, never deleted)
         rc = r.returncode
         name = os.path.splitext(os.path.basename(os.path.normpath(a.input[0])))[0]
-        acct = stock_unit_account(a.out_dir, a.input[0], a.seed, rc)     # every (record, seed) unit of the input path: ok, or failed with a named reason — a parser skip read from upstream's own processed manifest
+        acct = stock_unit_account(a.out_dir, a.input[0], a.seed, rc, failed_predictions)
         for u in acct["skipped"]:
             rep.say(skipped.line(u["name"], u["reason"]))
         for u in acct["failed_units"]:
@@ -188,20 +203,24 @@ def cmd_pred_off(a) -> int:
             pass
 
 
-def stock_unit_account(out_dir: str, input_path: str, seed, rc: int) -> dict:
+def stock_unit_account(out_dir: str, input_path: str, seed, rc: int, failed_predictions=None) -> dict:
     """The stock route's completeness account of its (record, seed) units, the same shape as the worker route's (skipped.units). The records
     are boltz predict's for this input path — the file's stem, or one per file of a directory (worker.expand_inputs) — under upstream's
     ``boltz_results_<input stem>/``: a unit is ok when ``predictions/<record>/<record>_model_0.cif`` (``.pdb`` under ``--output_format pdb``)
     exists; else failed with a named reason — the process's own exit code when it failed, ``stock parser skipped the input`` when it exited 0
     and its processed manifest carries no record of that id (boltz's ``Failed to process … Skipping`` line above names the parser error),
-    outputs short otherwise."""
+    outputs short otherwise. A writer's named failure takes precedence over a file left from an earlier run."""
     from .worker import expand_inputs
     root = os.path.splitext(os.path.basename(os.path.normpath(input_path)))[0]          # boltz: out_dir / f"boltz_results_{data.stem}" for the path it was given
     names = [os.path.splitext(os.path.basename(f))[0] for f in expand_inputs([input_path])] if os.path.exists(input_path) else [root]
     ids = skipped.record_ids(os.path.join(out_dir, f"boltz_results_{root}", "processed", "manifest.json"))   # None: the process never reached the parser
     seed_word = seed if seed is not None else "-"
     failed_units, skipped_units, ok = [], [], 0
+    failed_predictions = failed_predictions or {}
     for name in names:
+        if name in failed_predictions:
+            failed_units.append({"name": name, "seed": seed_word, "reason": failed_predictions[name]})
+            continue
         have = any(os.path.isfile(os.path.join(out_dir, f"boltz_results_{root}", "predictions", name, f"{name}_model_0.{ext}")) for ext in ("cif", "pdb"))
         skip = skipped.reason(None) if (rc == 0 and not have and ids is not None and name not in ids) else None
         if rc == 0 and have:

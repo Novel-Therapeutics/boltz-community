@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from .contract import prepare
+from .contract import engine_root, prepare, verify_loaded_engine
 
 
 def configure(*, overlay=False):
@@ -24,6 +24,8 @@ def configure(*, overlay=False):
 
 def adapt_engine(detail):
     import boltz2_opt
+
+    verify_loaded_engine(engine_root().parents[2] / "boltz2_opt")
     from boltz2_opt._autoload import TAG, require_core
     from boltz2_opt._core_gate import gate
 
@@ -76,6 +78,10 @@ def adapt_engine(detail):
             line = report.not_active_line(
                 "mode off: fork with pinned upstream numerical core; no optimization profile applied"
             )
+        if line.startswith(f"{report.PREFIX} ACTIVE ") or line.startswith(
+            f"{report.PREFIX} NOT ACTIVE: mode off:"
+        ):
+            line += f" source_contract_sha256={detail['source_contract_sha256']}"
         return original_say(line, *args, **kwargs)
 
     report.say = say

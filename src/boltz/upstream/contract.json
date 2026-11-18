@@ -6,7 +6,8 @@
     "Source proof identifies the fork and packaged numerical modules separately.",
     "The core pin, flags, profiles, kernels and numerical source are preserved.",
     "Worker failure accounting handles the fork writer's skipped-batch exception.",
-    "Overlapped output preserves the fork's optional confidence and structure checks."
+    "Overlapped output preserves the fork's optional confidence and structure checks.",
+    "The off route accounts for named writer failures without abandoning successful records."
   ],
   "engine_files": {
     "LICENSE": "8fb5aa0df77ed9762b84c7acd3f810080de64d8781335c25a93c3c054a6aa53a",
@@ -66,7 +67,7 @@
     "affinity_leg.py": "1c7244579890e2545152f0ca469cfc9ed4fd626b90fc13b42282cd9bbf624de1",
     "atom.py": "952415b87ec1ed2c2a6002950ceed218528f015da9a76371236544e68a96522d",
     "big.py": "48048476c9a136dd9fae624c8c0476f12dda1b7848ff032239df613d64e78fbc",
-    "cli.py": "7dda810676fed43ad50a3ae165c84dfa1acdc193cb88c889fedfd9f4e02d5605",
+    "cli.py": "86376b9c61e47372674aff042916959a2ffa7923b5d31efa44b6001d27c6b798",
     "conf.py": "21f7341acd91d041ddc1f83839f7a32a73a973ab6956da2cdbe1dd2fc56d01a9",
     "det.py": "9fde677535116f35b339f2a785c3ed88158ceb5009c175eeddd849fd52796f6a",
     "digest_memo.py": "6e9341bdb58c7e8697878271a5e95602431be4a7c87d0bc7c92eb4bd9172a500",
@@ -276,9 +277,9 @@
     "upstream/__init__.py": "cb24737d484ed7e126729a82bd01f14b110a2f498dca8e8dfdeda1e9335be4f6",
     "upstream/__main__.py": "ec428a0a4cb20dfff18d98989480f490e36bfe1fc1d74d002892c8c1281aa9a9",
     "upstream/bootstrap.py": "1ed24edf5108676b4cddf2a0e5424a6acf9b81f84c1261e01a70fed3a86cd97a",
-    "upstream/contract.py": "08f2f9a3f405ab79497e54ecad957ea20557ccc6f05ff3803f7c27ece11f0e8a",
-    "upstream/runtime.py": "fed14f0338dc837d4c9068148dbdd45167a80b4738f81016a677831371550b59",
-    "upstream/stock_pred.py": "448761c5f103645340684e3764b98328a170d7f17515decbe9fd801412841596",
+    "upstream/contract.py": "e1a8bf62b1ff0ecb123e43e506aec269337e12b26405051356fbecc50b82a1af",
+    "upstream/runtime.py": "a3df1361eeb338cba42349d7e616183d607dc6657488b5ae2e268f956fca5ef6",
+    "upstream/stock_pred.py": "00bb32a0311949ede6f90ddd5de7b8c14e87177211de05f36cbb6e8056ffac2e",
     "upstream/worker_launch.py": "74a876638f18f77c8a52fec678fe4bc19f2f732a27d7e2f17626fbb1fff3d4ed",
     "xpu.py": "fbf4738284e492b9f8d5d6656afc3c86e2c27cba5f086d5b782f6f36cac708b6"
   },
@@ -322,6 +323,12 @@
     "boltz/model/potentials/potentials.py": "1e4a79f1454e5a71ca5a3eb82fca5451a7dc2bed8a45df9f0a814f62a6219f38"
   },
   "stock_wheel_sha256": "b8c62bbdede1922931d9203118f62c858f11aa699bf91fd4c05a5ed6a6d8b4fc",
+  "upstream_cli_functions": {
+    "_mode_arg": "e41e3f857a9380cc4e9b2158762f81e7d51e71d0ddd3f4d1c33edba209dab6da",
+    "build_parser": "c04999ad52c6bd0d0abb51f87f70810323b5695733e7d89050de60662da4c1ea",
+    "main": "06453160db0934a7d42fd777f78bb947344b8c7cebb719c5f2cea4ef215dc005",
+    "resolve_mode": "8d31b3645ea8944103451393c171393a0e442b340e565274f5b2f9d1232a831a"
+  },
   "upstream_commit": "f4f62fa6592ae4938d49b1757bea0cfeff9f468e",
   "upstream_engine_files": {
     "opt/_build_backend.py": "a01ae50c928bed1327d57e7e50914a0e3d84f082bea3c5af340dc8943d75caeb",

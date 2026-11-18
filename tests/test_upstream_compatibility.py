@@ -169,6 +169,9 @@ def test_engine_and_numerical_sources_are_installed_together(monkeypatch):
     assert root.is_relative_to(Path(source_contract.__file__).parents[1])
     assert numerical.is_relative_to(root.parent)
     assert detail["integrated_engine"] is True
+    assert detail["source_contract_sha256"] == source_contract.digest(
+        source_contract.CONTRACT_PATH
+    )
     assert not list(root.rglob("*.whl"))
     for relative, wanted in source_contract.contract()["stock_files"].items():
         assert source_contract.digest(numerical / relative) == wanted
@@ -177,7 +180,20 @@ def test_engine_and_numerical_sources_are_installed_together(monkeypatch):
 def test_original_profile_parser_and_numerics_have_not_changed():
     c = source_contract.contract()
     package = Path(source_contract.__file__).resolve().parents[2] / "boltz2_opt"
-    for name in ("cli.py", "modes.py", "settings.py", "report.py", "worker.py"):
+    import ast
+    import hashlib
+
+    parser_source = (package / "cli.py").read_text()
+    expected = c["upstream_cli_functions"]
+    actual = {
+        node.name: hashlib.sha256(
+            ast.get_source_segment(parser_source, node).encode()
+        ).hexdigest()
+        for node in ast.parse(parser_source).body
+        if isinstance(node, ast.FunctionDef) and node.name in expected
+    }
+    assert actual == expected
+    for name in ("modes.py", "settings.py", "report.py", "worker.py"):
         assert (
             source_contract.digest(package / name)
             == c["upstream_engine_files"]["opt/boltz2_opt/" + name]
@@ -328,3 +344,52 @@ def test_writer_overlap_retains_community_confidence_fields(monkeypatch, tmp_pat
     )
     for name, value in prediction.items():
         torch.testing.assert_close(job["host"][name], value)
+
+
+def test_off_route_retains_successful_affinity_candidates(tmp_path):
+    # The engine patches writer callbacks only in its off subprocess.
+    program = """
+from pathlib import Path
+from types import SimpleNamespace as NS
+import sys
+import torch
+from boltz.upstream.bootstrap import install
+from boltz.upstream.contract import engine_root
+from boltz.upstream.stock_pred import stock_failures, track_failures
+
+install(engine_root().parent / "reference")
+import boltz.main as cli
+from boltz.data.write.writer import PredictionError
+
+root = Path(sys.argv[1])
+track_failures(cli, root, PredictionError)
+output = root / "predictions"
+model = NS(device=torch.device("cpu"))
+trainer = NS(strategy=NS(reduce=lambda value, **kwargs: value))
+affinity = NS(output_id=None)
+mixed = cli.Manifest([
+    NS(id="structure-failed", affinity=affinity),
+    NS(id="affinity-failed", affinity=affinity),
+    NS(id="success", affinity=affinity),
+])
+for record in mixed.records:
+    folder = output / record.id
+    folder.mkdir(parents=True)
+    (folder / f"pre_affinity_{record.id}.npz").touch()
+
+writer = cli.BoltzWriter(root, output, output_format="mmcif", boltz2=True)
+writer.write_on_batch_end(
+    trainer, model, {"exception": True}, None, {"record": [mixed.records[0]]}, 0, 0,
+)
+writer.on_predict_epoch_end(trainer, model)
+candidates = cli.filter_inputs_affinity(mixed, root)
+assert [r.id for r in candidates.records] == ["affinity-failed", "success"]
+writer = cli.BoltzAffinityWriter(root, output)
+writer.write_on_batch_end(
+    trainer, model, {"exception": True}, None, {"record": [candidates.records[0]]}, 0, 0,
+)
+writer.on_predict_epoch_end(trainer, model)
+assert stock_failures(root, "structure") == {"structure-failed"}
+assert stock_failures(root, "affinity") == {"affinity-failed"}
+"""
+    subprocess.run([sys.executable, "-c", program, str(tmp_path)], check=True)

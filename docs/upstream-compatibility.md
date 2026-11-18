@@ -26,8 +26,10 @@ python -m boltz2_opt pred --mode exact --input complex.yaml --out_dir output
 The original `off`, `exact`, `fast`, `big`, `BOLTZ2_OPT`, `--no-compile`,
 `--allow-partial`, ablations, admission checks and exit rules are preserved.
 The engine is opt-in. Its explicit CLI defaults to `fast`, as upstream does.
-The installed autoload hook is inert with `BOLTZ2_OPT` unset or `off`. Upstream
-refuses `BOLTZ2_OPT=fast boltz predict`; use the engine's `pred` command.
+With the optimization variables unset or `BOLTZ2_OPT=off`, Python startup
+leaves the engine inactive. The installed hook reports unknown `BOLTZ2_OPT*`
+and `BOLTZ2_BIG_*` variables at interpreter startup with exit 3. Use the
+engine's `pred` command to select an optimized profile.
 `python -m boltz.upstream` remains an alias for earlier experimental users.
 No external engine checkout, stock Boltz wheel, extraction cache or
 `BOLTZ_ANTHROPIC_ROOT` setting is needed for execution. If a standalone
@@ -43,8 +45,10 @@ class, checkpoint loader, data pipeline, output writers and reporting, while usi
 the original model forward and the original trunk, pair, MSA and denoiser modules.
 The WASTE proof checks the actual loaded numerical-module paths against their
 original hashes. It does
-**not** pretend the fork is an unmodified stock installation. Run manifests
-record the actual fork source identity and the reference core separately.
+**not** pretend the fork is an unmodified stock installation. Prediction transcripts
+record `source_contract_sha256`, which covers the packaged fork, reference core
+and engine sources and assets. `check --json` reports the fork and reference
+identities separately.
 
 Within the explicitly selected engine process:
 
@@ -73,8 +77,9 @@ Within the explicitly selected engine process:
   Its confidence JSON includes original input chain labels and the fork's extra
   PAE and structure-check fields, including with writer overlap. The engine
   prepares inputs through the original CLI and applies its per-input and per-seed
-  failure and provider rules. A missing structure for a requested affinity
-  prediction is reported as an error. Affinity retains the engine's original
+  failure and provider rules. In `off`, writer-recorded skips count as failed
+  units while completed structures remain eligible for affinity. A missing
+  structure for any remaining affinity request is reported as an error. Affinity retains the engine's original
   single-binder orchestration.
 
 No fork source is globally rolled back. Native fork execution retains these fixes
@@ -149,10 +154,10 @@ graph/hoist, while `big --use_potentials` supports eager fused DiT. Use each res
 profile's census as the execution evidence. An upstream kernel refusal is retained,
 not silently replaced by a different configuration.
 
-## Integrated-source validation
+## Historical integrated-source validation
 
-The source port retains the original numerical bodies, parser, profile table and
-worker implementation. Control-plane changes locate packaged assets, launch the
+The measured source port retained the original numerical bodies, parser, profile
+table and worker implementation. Control-plane changes locate packaged assets, launch the
 integrated distribution and identify the actual fork/reference sources. The
 Apache-2.0 engine notices and third-party licences are carried with those assets.
 The build backend preserves upstream's installed autoload hook for both wheel and

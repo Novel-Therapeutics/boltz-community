@@ -1,8 +1,76 @@
 """Clean off-profile subprocess: fork IO with the same reference numerical core."""
 
 import importlib
+import json
 import os
 import sys
+from pathlib import Path
+
+
+def stock_failures(directory: Path, phase: str) -> set[str]:
+    """Read the named skips recorded by every writer process in one phase."""
+    return {
+        json.loads(line)
+        for path in directory.glob(f"{phase}-*.jsonl")
+        for line in path.read_text(encoding="utf-8").splitlines()
+    }
+
+
+def track_failures(cli, directory: Path, error_type) -> None:
+    """Keep the reference phases running and record failed units for the parent."""
+
+    def track(writer, phase):
+        write_batch = writer.write_on_batch_end
+        end_phase = writer.on_predict_epoch_end
+
+        def write_on_batch_end(
+            self,
+            trainer,
+            pl_module,
+            prediction,
+            batch_indices,
+            batch,
+            batch_idx,
+            dataloader_idx,
+        ):
+            write_batch(
+                self,
+                trainer,
+                pl_module,
+                prediction,
+                batch_indices,
+                batch,
+                batch_idx,
+                dataloader_idx,
+            )
+            if prediction["exception"]:
+                path = directory / f"{phase}-{os.getpid()}.jsonl"
+                with path.open("a", encoding="utf-8") as stream:
+                    for record in batch["record"]:
+                        stream.write(json.dumps(record.id) + "\n")
+
+        def on_predict_epoch_end(self, trainer, model):
+            try:
+                end_phase(self, trainer, model)
+            except error_type:
+                # Native inference raises after the phase; the engine owns
+                # per-record accounting and continues with successful units.
+                if not stock_failures(directory, phase):
+                    raise
+
+        writer.write_on_batch_end = write_on_batch_end
+        writer.on_predict_epoch_end = on_predict_epoch_end
+
+    track(cli.BoltzWriter, "structure")
+    track(cli.BoltzAffinityWriter, "affinity")
+    filter_affinity = cli.filter_inputs_affinity
+
+    def filter_inputs_affinity(manifest, outdir, override=False):
+        failed = stock_failures(directory, "structure")
+        eligible = cli.Manifest([r for r in manifest.records if r.id not in failed])
+        return filter_affinity(eligible, outdir, override)
+
+    cli.filter_inputs_affinity = filter_inputs_affinity
 
 
 def main(argv=None):
@@ -30,7 +98,8 @@ def main(argv=None):
         print("[boltz2-opt] NOT ACTIVE: " + "; ".join(proof["problems"]), flush=True)
         return stock_pred.EXIT_NOT_STOCK
     print(
-        f"[boltz2-opt] verified fork {detail['version']} with pinned upstream numerical core",
+        f"[boltz2-opt] verified fork {detail['version']} with pinned upstream numerical core "
+        f"source_contract_sha256={detail['source_contract_sha256']}",
         flush=True,
     )
     if options.get("--proof-only") == "1":
@@ -38,14 +107,15 @@ def main(argv=None):
     from .bootstrap import install
 
     install(stock)
-    entry = getattr(
-        importlib.import_module(stock_pred.STOCK_ENTRY[0]), stock_pred.STOCK_ENTRY[1]
-    )
+    cli = importlib.import_module(stock_pred.STOCK_ENTRY[0])
+    entry = getattr(cli, stock_pred.STOCK_ENTRY[1])
     from click import ClickException
 
     from boltz.data.write.writer import PredictionError
     from boltz2_opt import phase
 
+    if directory := options.get("--prediction-failure-dir"):
+        track_failures(cli, Path(directory), PredictionError)
     phase.install()
     if kopts:
         kernels.install(mode="stock", **kopts)
