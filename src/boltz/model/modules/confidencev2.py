@@ -105,6 +105,8 @@ class ConfidenceModule(nn.Module):
                 cutoff_min=conditioning_cutoff_min,
                 cutoff_max=conditioning_cutoff_max,
             )
+        # Keep the Boltz-2 architecture explicit when using the reference core.
+        pairformer_args = {**pairformer_args, "v2": True}
         self.pairformer_stack = PairformerModule(
             token_s,
             token_z,

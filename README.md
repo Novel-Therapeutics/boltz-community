@@ -151,6 +151,10 @@ uv add boltz-community            # or: uv add "boltz-community[cuda]"
 
 If you are installing on CPU-only or non-CUDA GPU hardware, omit `[cuda]`. Note that the CPU version is significantly slower than the GPU version.
 
+### Experimental Anthropic engine
+
+Use the opt-in `boltz2-opt` command for Anthropic’s original Boltz-2 optimization profiles. See [installation, profiles, and validation](docs/upstream-compatibility.md).
+
 ### FlashPairformer kernels
 
 Anthropic's [uplifting-biomolecular-modeling](https://github.com/anthropics/uplifting-biomolecular-modeling) release includes `opt_core`, a package of FlashPairformer kernels (Triton and prebuilt CUDA) for the Pairformer's triangle attention and triangle multiplication. It is not on PyPI. Install it the way that repository documents, as an editable install from a clone, so that its prebuilt CUDA kernels are found (a regular `pip install` of `common/opt_core` leaves some of them out, and those calls then use the slower Triton kernels):

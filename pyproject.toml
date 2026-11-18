@@ -1,6 +1,7 @@
 [build-system]
-requires = ["setuptools >= 61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools >= 64.0", "wheel"]
+build-backend = "_build_backend"
+backend-path = ["."]
 
 [project]
 name = "boltz-community"
@@ -74,6 +75,7 @@ Upstream = "https://github.com/jwohlwend/boltz"
 
 [project.scripts]
 boltz = "boltz.main:cli"
+boltz2-opt = "boltz2_opt.__main__:main"
 boltz-fix-macos-libomp = "boltz.scripts.fix_macos_libomp:main"
 
 [project.optional-dependencies]
@@ -137,3 +139,11 @@ markers = [
     "xpu: requires an Intel GPU with PyTorch XPU (run manually with '-m xpu')",
     "cuda: requires an NVIDIA GPU with opt_core and cuequivariance (run manually with '-m cuda')",
 ]
+
+[tool.setuptools.package-data]
+"boltz.upstream" = ["contract.json"]
+"boltz._anthropic_engine" = ["engine/**/*", "reference/**/*.py"]
+"boltz2_opt" = ["pyproject.toml"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["**/__pycache__/*", "**/*.py[cod]"]
