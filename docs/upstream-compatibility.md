@@ -3,7 +3,8 @@
 This opt-in entrypoint runs the **original** `boltz2_opt` engine at
 `f4f62fa6592ae4938d49b1757bea0cfeff9f468e`. It delegates its parser, profiles,
 worker, kernel selection, hardware admission, census and exit rules to that
-engine. Launch it through `boltz2-opt` or `python -m boltz2_opt`.
+engine, with the scoped Blackwell adaptations documented below. Launch it through
+`boltz2-opt` or `python -m boltz2_opt`.
 The fork's regular entrypoint is `boltz predict`.
 
 The engine, worker, optimization levers and required reference numerical source
@@ -19,8 +20,9 @@ describes that earlier evidence, not the current installation requirements.
 
 The CPU suite covers Python 3.11 with PyTorch 2.10 and Python 3.14 with
 PyTorch 2.10 and 2.15. The optimized GPU
-profiles have not been revalidated on PyTorch 2.15. Their original runtime admission pins and
-reference numerical hashes remain intact: a pinned optimization can step aside
+profiles have not been revalidated on PyTorch 2.15. Reference numerical hashes
+remain intact. Original runtime admission pins apply except for the recorded
+PyTorch 2.12.0/CUDA 13.0 Blackwell qualification below: a pinned optimization can step aside
 or refuse an unsupported stack. Earlier bitwise and performance results do not
 establish equivalence on the new runtime. Legacy autocast API fallbacks have
 been removed and the reviewed source contract records that adjustment.
@@ -33,7 +35,8 @@ python -m boltz2_opt pred --mode exact --input complex.yaml --out_dir output
 ```
 
 The original `off`, `exact`, `fast`, `big`, `BOLTZ2_OPT`, `--no-compile`,
-`--allow-partial`, ablations, admission checks and exit rules are preserved.
+`--allow-partial`, ablations and exit rules are preserved. Blackwell admission
+additions retain the existing runtime equality checks and failure gates.
 The engine is opt-in. Its explicit CLI defaults to `fast`, as upstream does.
 With the optimization variables unset or `BOLTZ2_OPT=off`, Python startup
 leaves the engine inactive. The installed hook reports unknown `BOLTZ2_OPT*`
@@ -109,6 +112,54 @@ The runtime only reads the contract.
 
 ## Validation status
 
+### Blackwell kernel qualification, 18 November 2026
+
+[Recorded receipts and comparisons](benchmarks/blackwell-profile-qualification.json)
+cover the RTX PRO 6000 Blackwell on bizon, compute capability 12.0, PyTorch
+2.12.0+cu130, Triton 3.7.0 and opt_core 0.5.228.0. The tested implementation is
+commit `2db3842`, based on `0607812`. GPU access waited for production to exit;
+no production process was paused. Disposable validation containers completed and
+the GPU had no compute processes afterward.
+
+Two separate causes produced the earlier refusals:
+
+- LayerNorm, fused DiT softmax/glue and exact MSA PWA/transition had architecture
+  allowlists covering previously tested GPUs. Blackwell was unqualified. Direct
+  Blackwell probes passed bitwise: 66 LayerNorm classes, 14 softmax classes,
+  nine glue classes, ten transition configurations, and a uniquely matching PWA
+  summation candidate at each of ten shapes. Source- and runtime-scoped adapter
+  admission now retains their runtime bit comparisons. Provider files and
+  numerical kernel bodies are unchanged.
+- Fused OPM's default tile exceeds this GPU's per-block shared-memory limit.
+  Reducing pipeline stages alone still required 131,072 bytes against a 101,376
+  byte limit. The community `community_sm120` configuration reduces `BJ` from
+  eight to four and stages from three to two. Its compiled kernel uses 99,328
+  bytes, preserving the fused prologue, TMA and fused projection. Explicit user
+  and provider card configurations take precedence. This remains a tolerance
+  optimization in `fast`/`big`, with nonzero-weight numerical probes recorded.
+
+The installed wheel was tested after removing the original engine tree and
+standalone distributions from disposable containers. The 117-token unguided
+example and 636-token guided 8QLV case completed with all three optimized
+profiles returning **0**. An additional unguided 636-token `off`/`exact` pair
+returned **0** and exercised fused softmax/glue, with both MSA exact cells
+proven on 41,721,600 compared elements and then serving 15 calls each. No
+`--allow-partial` flag or new card-specific disabled-lever list was introduced.
+The focused CPU/source-contract suite passed 40 checks.
+
+Execution success does not establish whole-prediction equality or production
+accuracy. The public example's `exact` coordinates and confidence match `off`.
+For 8QLV, the aligned all-atom `exact`/`off` PDB RMSD is 0.010594 Å with guidance
+and 0.014243 Å without guidance. The cause of this full-profile difference is
+unresolved; individual kernel checks do not certify end-to-end bitwise equality.
+Guided 8QLV seed 0 DockQ is 0.755949 (`off`), 0.756501 (`exact`), 0.434991 (`fast`)
+and 0.599490 (`big`). These are selected regression diagnostics. They do not
+justify automatically adopting `fast` or `big` for Novel Design production.
+Cold process timings in the receipts are not speedup measurements. Other GPUs,
+PyTorch versions, affinity and wider workloads need separate qualification.
+
+### Historical compatibility snapshots
+
 The GPU reports below retain the identities of the earlier measured sources.
 The integration on v2.14.0 changes the source identity. Those receipts provide
 historical parity and timing evidence for their recorded snapshots.
@@ -150,7 +201,7 @@ regression cases, so this is an integration test, not an unbiased estimate of
 accuracy or an accuracy guarantee for a fast profile. The recorded cold timings
 share JIT caches and are diagnostic only; they do not measure a speedup.
 
-**Upstream Blackwell limitations are retained.** The original exact LayerNorm
+**The historical snapshots retained upstream Blackwell limitations.** The original exact LayerNorm
 provider declines compute capability 12.0 (`cc:12.0_not_proven_(9.0,_8.0)`), and the
 original default fused OPM configuration produces `OutOfResources` on the deep-MSA
 regression inputs. Both implementations write predictions but return exit **3**
@@ -170,8 +221,9 @@ Additional fork reports remain different from unmodified stock.
 
 Guided profiles differ upstream: `fast --use_potentials` disables fused DiT and its
 graph/hoist, while `big --use_potentials` supports eager fused DiT. Use each resolved
-profile's census as the execution evidence. An upstream kernel refusal is retained,
-not silently replaced by a different configuration.
+profile's census as the execution evidence. Remaining upstream kernel refusals
+retain their failure behavior. The current Blackwell adaptations and their
+qualification are explicit above.
 
 ## Historical integrated-source validation
 

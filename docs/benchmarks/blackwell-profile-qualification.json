@@ -1,0 +1,1414 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-18",
+  "purpose": "Scoped Blackwell kernel qualification; profile execution and output equality are separate findings. Historical evidence remains immutable.",
+  "remote_evidence_root": "/home/bizon/novel-design/boltz-blackwell-qualification-20261118",
+  "probes": {
+    "layernorm_base": {
+      "bit_equal": true,
+      "classes": 48,
+      "opm_zero_weight_probe": "launch diagnostic only; excluded from numerical qualification"
+    },
+    "layernorm_additional": {
+      "bit_equal": true,
+      "classes": 18
+    },
+    "opm_nonzero": [
+      {
+        "N": 17,
+        "S": 33,
+        "cfg": "blackwell-f1-bj4",
+        "rms": 1.70428666024236e-05,
+        "max_abs": 0.001953125,
+        "reference_rms": 0.11036814749240875,
+        "finite": true
+      },
+      {
+        "N": 17,
+        "S": 33,
+        "cfg": "v1",
+        "rms": 5.09061146658496e-06,
+        "max_abs": 0.0009765625,
+        "reference_rms": 0.11036814749240875,
+        "finite": true
+      },
+      {
+        "N": 129,
+        "S": 257,
+        "cfg": "blackwell-f1-bj4",
+        "rms": 1.3330050933291204e-05,
+        "max_abs": 0.001953125,
+        "reference_rms": 0.09823901951313019,
+        "finite": true
+      },
+      {
+        "N": 129,
+        "S": 257,
+        "cfg": "v1",
+        "rms": 2.620987743284786e-06,
+        "max_abs": 0.0009765625,
+        "reference_rms": 0.09823901951313019,
+        "finite": true
+      },
+      {
+        "N": 385,
+        "S": 1024,
+        "cfg": "blackwell-f1-bj4",
+        "rms": 0.00012541364412754774,
+        "max_abs": 0.00146484375,
+        "reference_rms": 0.11193563044071198,
+        "finite": true
+      },
+      {
+        "N": 385,
+        "S": 1024,
+        "cfg": "v1",
+        "rms": 0.00012541127216536552,
+        "max_abs": 0.00146484375,
+        "reference_rms": 0.11193563044071198,
+        "finite": true
+      }
+    ],
+    "trans2x": {
+      "bit_equal": true,
+      "classes": 10
+    },
+    "smx": {
+      "bit_equal": true,
+      "classes": 14
+    },
+    "glue": {
+      "bit_equal": true,
+      "classes": 9
+    },
+    "pwa_first_attempt": "Harness created inference tensors whose parameters have no version counter; no numerical conclusion. Preserved and superseded by normal version-tracked tensors under no_grad.",
+    "pwa2x": {
+      "classes": 10,
+      "each_class_has_bit_equal_candidate": true,
+      "selection_discriminates": true
+    }
+  },
+  "runs": [
+    {
+      "name": "8qlv-assembly1-big",
+      "state": "completed",
+      "returncode": 0,
+      "seconds": 21.878725215006853,
+      "identity": {
+        "case": "8qlv-assembly1",
+        "mode": "big",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae",
+          "--use_potentials"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "4a920c123c94ad02794fe7d318f22371b9e167583652c1ea39e649f2acefb877"
+        },
+        "driver_sha256": "4b156a8241b3f0e58e33be84169c7746f7c1a482eccc539c915e44429a43972b",
+        "seed": 0
+      },
+      "key": "35847ff18a8eb802ff3a6e1a3cad9d1be24035b7821a678a7b4490769c3049dc",
+      "purpose": "New Blackwell kernel adaptation and current-main source qualification, distinct from historical requests",
+      "receipt_sha256": "e0b80b3b4e5b4c0d93062184a4cbdf852bca2e119b1a04577ca084876092f833",
+      "receipt": "full-v2/8qlv-assembly1-big-full.json",
+      "log_sha256": "99248cbb2f7d30843a7a845513d39877e978b9815fa1915bc0a754b6e7a47620",
+      "selected_census": [
+        "[boltz2-opt] LEVER name=fpf_opm state=on impl=opt_core.ops.msa_opm:forward_mask_norm origin=core strategy=LOCAL.boltz2.fused_outer_product_mean execution=executed:16 served=16 fallback=0 errors=0 cfg=override:community_sm120 tma=True",
+        "[boltz2-opt] LEVER name=exactln state=on impl=opt_core.kernels.ln:exactln/exactln_fwd.cu origin=core strategy=LOCAL.boltz2.exact_layer_norm_replica variant=core served=1120 fallback=760 fallback_by=below_min_numel:760 errors=0 idle=False gate=ok cc=120 cc_proven=False bitcmp_classes=7 bitcmp_mismatch=0 provider=core:opt_core-0.5.228.0"
+      ],
+      "output_comparison": {
+        "identity": {
+          "reference_sha256": "c2bc06cef94193034f9488f29bf7ee745502e59b216bf4b0ce94eacdc4dd241c",
+          "prediction_sha256": "bf65f5f57af69db66a945135ee9b97e635045ebb89d9b801e79f9d315f9fce21",
+          "reference_confidence": "a683c2abd9f9664f2eaa655aa83c206f4a6e1f18d65ac97de5a528ff8b6cffce",
+          "prediction_confidence": "70d1b0de0c3399dcbb95d58fdac7d6040ff66d17e8179901137d48bc852eb072",
+          "scorer": "99c40a67b05479c3108b33da590e750c6627986b903c76fd9dce5587faacb7fd"
+        },
+        "aligned_all_atom_rmsd_angstrom": 1.0544010131827997,
+        "pdb_atomcoords_equal": false,
+        "common_confidence_deltas": {
+          "confidence_score": -0.0027207136154174805,
+          "ptm": -0.002950608730316162,
+          "iptm": -0.016472935676574707,
+          "ligand_iptm": 0.0,
+          "protein_iptm": -0.016472935676574707,
+          "complex_plddt": 0.0007173418998718262,
+          "complex_iplddt": 0.0008872151374816895,
+          "complex_pde": 0.004293709993362427,
+          "complex_ipde": 0.16997849941253662,
+          "chains_ptm.0": -0.013146519660949707,
+          "chains_ptm.1": -0.002734661102294922,
+          "pair_chains_iptm.0.0": -0.013146519660949707,
+          "pair_chains_iptm.0.1": -0.016472935676574707,
+          "pair_chains_iptm.1.0": -0.00659489631652832,
+          "pair_chains_iptm.1.1": -0.002734661102294922,
+          "complex_pae": 0.013971507549285889,
+          "complex_ipae": 0.6697416305541992,
+          "chains_pae.0": -0.12479603290557861,
+          "chains_pae.1": 0.0015351176261901855,
+          "pair_chains_pae.0.0": -0.12479603290557861,
+          "pair_chains_pae.0.1": 0.8892083168029785,
+          "pair_chains_pae.1.0": 0.4502756595611572,
+          "pair_chains_pae.1.1": 0.0015351176261901855,
+          "complex_pae_unweighted": 0.030731678009033203,
+          "complex_ipae_unweighted": 0.32297706604003906,
+          "chains_pae_unweighted.0": 0.031443119049072266,
+          "chains_pae_unweighted.1": 0.021379470825195312,
+          "pair_chains_pae_unweighted.0.0": 0.031443119049072266,
+          "pair_chains_pae_unweighted.0.1": 0.3373689651489258,
+          "pair_chains_pae_unweighted.1.0": 0.30858731269836426,
+          "pair_chains_pae_unweighted.1.1": 0.021379470825195312,
+          "chiral_centers_checked": 0.0,
+          "chiral_centers_inverted": 0.0,
+          "chiral_centers_flattened": 0.0,
+          "bonds_checked": 0.0,
+          "bonds_out_of_range": 0.0,
+          "structure_checks_passed": 0.0
+        }
+      },
+      "accuracy": {
+        "dockq": 0.5994899548949001,
+        "native_to_model_chain_map": {
+          "A": "A",
+          "B": "B"
+        },
+        "interfaces": {
+          "BA": {
+            "DockQ": 0.5994899548949001,
+            "chain1": "B",
+            "chain2": "A",
+            "chain_map": {
+              "B": "B",
+              "A": "A"
+            }
+          }
+        },
+        "per_chain": {
+          "A": 0.7302631578947368,
+          "B": 0.9770227362930204
+        },
+        "observed_ca": {
+          "A": 10,
+          "B": 621
+        },
+        "mean_chain_lddt_ca": 0.8536429470938787,
+        "acceptable_interfaces": 1,
+        "interface_count": 1,
+        "state": "completed",
+        "identity": {
+          "scorer_identity_sha256": "4800a17adcac5b3a9e29a9cf7236f646855e35f4160bf02ceeaedbe3641ecfd6",
+          "native_pdb_sha256": "78e323a35c467cdfd15a7b31d45207fee995b5c655c1ea7b335c148c1965b4ba",
+          "prediction_nonempty_pdb_sha256": "bf65f5f57af69db66a945135ee9b97e635045ebb89d9b801e79f9d315f9fce21",
+          "normalization": "remove_entirely_blank_lines_only_v1",
+          "primary_native_interfaces": [
+            [
+              "B",
+              "A"
+            ]
+          ]
+        },
+        "case": "8qlv-assembly1",
+        "seconds": 0.17910478700650856,
+        "key": "74b237f11c6bdd280685ce6beec69248d19eb093db467f0ebb1a36bc38a3b7fc",
+        "group": "8qlv-assembly1-big",
+        "mode": "big",
+        "prediction_pdb_sha256": "bf65f5f57af69db66a945135ee9b97e635045ebb89d9b801e79f9d315f9fce21",
+        "shared_score_cache_key": "74b237f11c6bdd280685ce6beec69248d19eb093db467f0ebb1a36bc38a3b7fc"
+      }
+    },
+    {
+      "name": "8qlv-assembly1-exact",
+      "state": "failed_profile",
+      "returncode": 3,
+      "seconds": 31.751229963992955,
+      "identity": {
+        "case": "8qlv-assembly1",
+        "mode": "exact",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae",
+          "--use_potentials"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "4a920c123c94ad02794fe7d318f22371b9e167583652c1ea39e649f2acefb877"
+        },
+        "driver_sha256": "4b156a8241b3f0e58e33be84169c7746f7c1a482eccc539c915e44429a43972b",
+        "seed": 0
+      },
+      "key": "857dd0b5056ecc70bb9378160004ffcc74256b4b03dfb6643f7fbbd74d36214c",
+      "purpose": "New Blackwell kernel adaptation and current-main source qualification, distinct from historical requests",
+      "receipt_sha256": "6e5708731b41a39fa279905f44d2f3f11741961b23fa66310aff328e2ada53b8",
+      "receipt": "full-v2/8qlv-assembly1-exact-full.json",
+      "log_sha256": "416cbd4b4239e0ed260eb2fd0c49fa7647a46daa05698aba802f5827aee264bc",
+      "selected_census": [
+        "[boltz2-opt] LEVER name=exactln state=on impl=opt_core.kernels.ln:exactln/exactln_fwd.cu origin=core strategy=LOCAL.boltz2.exact_layer_norm_replica variant=core served=26408 fallback=1851 fallback_by=below_min_numel:747,resid_below_min_numel:1104 errors=0 idle=False gate=ok cc=120 cc_proven=False bitcmp_classes=13 bitcmp_mismatch=0 provider=core:opt_core-0.5.228.0",
+        "[boltz2-opt] LEVER name=msa_pwa_exact state=skipped reason=pin:cc120 impl=opt_core.ops.msa_pwa2:pwa_forward origin=core strategy=LOCAL.boltz2.fused_pair_weighted_averaging_exact",
+        "[boltz2-opt] LEVER name=msa_trans2_exact state=skipped reason=pin:cc120 impl=forward/msa2/trans2.py:transition64 origin=kit strategy=LOCAL.boltz2.fused_transition64_exact",
+        "[boltz2-opt] LEVER name=dit_smx state=off reason=use_potentials impl=forward/ditexact/src/dx_token.py:softmax_scale_bias_mask origin=kit strategy=LOCAL.boltz2.dit_fused_softmax_replica",
+        "[boltz2-opt] LEVER name=dit_glue state=off reason=use_potentials impl=forward/ditexact/src/dx_token.py:glue_affine origin=kit strategy=LOCAL.boltz2.dit_fused_glue_replicas"
+      ],
+      "output_comparison": {
+        "identity": {
+          "reference_sha256": "c2bc06cef94193034f9488f29bf7ee745502e59b216bf4b0ce94eacdc4dd241c",
+          "prediction_sha256": "de41158e2194a9fc65311a1f99674053ebef4fdc15b21bf5a1059d214c92ed46",
+          "reference_confidence": "a683c2abd9f9664f2eaa655aa83c206f4a6e1f18d65ac97de5a528ff8b6cffce",
+          "prediction_confidence": "3e1ff66cf9c3b31589a7267b5846bb63ca894035fa7058747dbafc1155f0c258",
+          "scorer": "99c40a67b05479c3108b33da590e750c6627986b903c76fd9dce5587faacb7fd"
+        },
+        "aligned_all_atom_rmsd_angstrom": 0.010594201199796366,
+        "pdb_atomcoords_equal": false,
+        "common_confidence_deltas": {
+          "confidence_score": 0.0007014274597167969,
+          "ptm": 0.0005454421043395996,
+          "iptm": 0.0017400383949279785,
+          "ligand_iptm": 0.0,
+          "protein_iptm": 0.0017400383949279785,
+          "complex_plddt": 0.0004418492317199707,
+          "complex_iplddt": 0.0011393427848815918,
+          "complex_pde": -0.000913769006729126,
+          "complex_ipde": -0.01876544952392578,
+          "chains_ptm.0": 0.002931952476501465,
+          "chains_ptm.1": 0.0005263090133666992,
+          "pair_chains_iptm.0.0": 0.002931952476501465,
+          "pair_chains_iptm.0.1": 0.0017400383949279785,
+          "pair_chains_iptm.1.0": 0.0032529830932617188,
+          "pair_chains_iptm.1.1": 0.0005263090133666992,
+          "complex_pae": -0.006309568881988525,
+          "complex_ipae": -0.12138080596923828,
+          "chains_pae.0": -0.13490831851959229,
+          "chains_pae.1": -0.0029735565185546875,
+          "pair_chains_pae.0.0": -0.13490831851959229,
+          "pair_chains_pae.0.1": -0.21189451217651367,
+          "pair_chains_pae.1.0": -0.030867338180541992,
+          "pair_chains_pae.1.1": -0.0029735565185546875,
+          "complex_pae_unweighted": -0.022339344024658203,
+          "complex_ipae_unweighted": -0.30746889114379883,
+          "chains_pae_unweighted.0": -0.23931145668029785,
+          "chains_pae_unweighted.1": -0.013165473937988281,
+          "pair_chains_pae_unweighted.0.0": -0.23931145668029785,
+          "pair_chains_pae_unweighted.0.1": -0.5807065963745117,
+          "pair_chains_pae_unweighted.1.0": -0.03422856330871582,
+          "pair_chains_pae_unweighted.1.1": -0.013165473937988281,
+          "chiral_centers_checked": 0.0,
+          "chiral_centers_inverted": 0.0,
+          "chiral_centers_flattened": 0.0,
+          "bonds_checked": 0.0,
+          "bonds_out_of_range": 0.0,
+          "structure_checks_passed": 0.0
+        }
+      },
+      "accuracy": {
+        "dockq": 0.7565013442871331,
+        "native_to_model_chain_map": {
+          "A": "A",
+          "B": "B"
+        },
+        "interfaces": {
+          "BA": {
+            "DockQ": 0.7565013442871331,
+            "chain1": "B",
+            "chain2": "A",
+            "chain_map": {
+              "B": "B",
+              "A": "A"
+            }
+          }
+        },
+        "per_chain": {
+          "A": 0.8618421052631579,
+          "B": 0.9800703067415093
+        },
+        "observed_ca": {
+          "A": 10,
+          "B": 621
+        },
+        "mean_chain_lddt_ca": 0.9209562060023335,
+        "acceptable_interfaces": 1,
+        "interface_count": 1,
+        "state": "completed",
+        "identity": {
+          "scorer_identity_sha256": "4800a17adcac5b3a9e29a9cf7236f646855e35f4160bf02ceeaedbe3641ecfd6",
+          "native_pdb_sha256": "78e323a35c467cdfd15a7b31d45207fee995b5c655c1ea7b335c148c1965b4ba",
+          "prediction_nonempty_pdb_sha256": "de41158e2194a9fc65311a1f99674053ebef4fdc15b21bf5a1059d214c92ed46",
+          "normalization": "remove_entirely_blank_lines_only_v1",
+          "primary_native_interfaces": [
+            [
+              "B",
+              "A"
+            ]
+          ]
+        },
+        "case": "8qlv-assembly1",
+        "seconds": 0.15111968401470222,
+        "key": "e984d1f02cd30a54271507eedf7144d53a9fb312c3588550a95bec8628742900",
+        "group": "8qlv-assembly1-exact",
+        "mode": "exact",
+        "prediction_pdb_sha256": "de41158e2194a9fc65311a1f99674053ebef4fdc15b21bf5a1059d214c92ed46",
+        "shared_score_cache_key": "e984d1f02cd30a54271507eedf7144d53a9fb312c3588550a95bec8628742900"
+      }
+    },
+    {
+      "name": "8qlv-assembly1-fast",
+      "state": "completed",
+      "returncode": 0,
+      "seconds": 39.323957140994025,
+      "identity": {
+        "case": "8qlv-assembly1",
+        "mode": "fast",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae",
+          "--use_potentials"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "4a920c123c94ad02794fe7d318f22371b9e167583652c1ea39e649f2acefb877"
+        },
+        "driver_sha256": "4b156a8241b3f0e58e33be84169c7746f7c1a482eccc539c915e44429a43972b",
+        "seed": 0
+      },
+      "key": "67ab4836485293e4b0f815773d2f6b793c9b7123f92add9757283c9866a560b9",
+      "purpose": "New Blackwell kernel adaptation and current-main source qualification, distinct from historical requests",
+      "receipt_sha256": "caf4bbc689266fe1609d9ce90920bed1b54ffb12cab22779f6cf21f896a72494",
+      "receipt": "full-v2/8qlv-assembly1-fast-full.json",
+      "log_sha256": "d69742bee844e327634d30dfb69a254ed5da154b0f85062dcdf1cd1fe1ac3814",
+      "selected_census": [
+        "[boltz2-opt] LEVER name=fpf_opm state=on impl=opt_core.ops.msa_opm:forward_mask_norm origin=core strategy=LOCAL.boltz2.fused_outer_product_mean execution=executed:16 served=16 fallback=0 errors=0 cfg=override:community_sm120 tma=True",
+        "[boltz2-opt] LEVER name=exactln state=on impl=opt_core.kernels.ln:exactln/exactln_fwd.cu origin=core strategy=LOCAL.boltz2.exact_layer_norm_replica variant=core served=20231 fallback=767 fallback_by=below_min_numel:759,dtype:float64:8 errors=0 idle=False gate=ok cc=120 cc_proven=False bitcmp_classes=9 bitcmp_mismatch=0 provider=core:opt_core-0.5.228.0"
+      ],
+      "output_comparison": {
+        "identity": {
+          "reference_sha256": "c2bc06cef94193034f9488f29bf7ee745502e59b216bf4b0ce94eacdc4dd241c",
+          "prediction_sha256": "09c78484d14b7834f8e5c1d9603c308ef5cbe72b1e39bcebae18dffde6089581",
+          "reference_confidence": "a683c2abd9f9664f2eaa655aa83c206f4a6e1f18d65ac97de5a528ff8b6cffce",
+          "prediction_confidence": "afb1525be62bb399ff3a551903153994b9307045b1d8bb87fd0608ba1dfcab91",
+          "scorer": "99c40a67b05479c3108b33da590e750c6627986b903c76fd9dce5587faacb7fd"
+        },
+        "aligned_all_atom_rmsd_angstrom": 1.1941519901320918,
+        "pdb_atomcoords_equal": false,
+        "common_confidence_deltas": {
+          "confidence_score": -0.017104029655456543,
+          "ptm": -0.014481544494628906,
+          "iptm": -0.05711430311203003,
+          "ligand_iptm": 0.0,
+          "protein_iptm": -0.05711430311203003,
+          "complex_plddt": -0.007101476192474365,
+          "complex_iplddt": -0.02023148536682129,
+          "complex_pde": 0.01595708727836609,
+          "complex_ipde": 0.7503681182861328,
+          "chains_ptm.0": -0.0607948899269104,
+          "chains_ptm.1": -0.013564229011535645,
+          "pair_chains_iptm.0.0": -0.0607948899269104,
+          "pair_chains_iptm.0.1": -0.05711430311203003,
+          "pair_chains_iptm.1.0": -0.2041642665863037,
+          "pair_chains_iptm.1.1": -0.013564229011535645,
+          "complex_pae": 0.05071854591369629,
+          "complex_ipae": 2.396517753601074,
+          "chains_pae.0": 0.45701372623443604,
+          "chains_pae.1": 0.0040062665939331055,
+          "pair_chains_pae.0.0": 0.45701372623443604,
+          "pair_chains_pae.0.1": 3.233405590057373,
+          "pair_chains_pae.1.0": 1.5596296787261963,
+          "pair_chains_pae.1.1": 0.0040062665939331055,
+          "complex_pae_unweighted": 0.2195570468902588,
+          "complex_ipae_unweighted": 2.180415153503418,
+          "chains_pae_unweighted.0": 0.9069664478302002,
+          "chains_pae_unweighted.1": 0.15665173530578613,
+          "pair_chains_pae_unweighted.0.0": 0.9069664478302002,
+          "pair_chains_pae_unweighted.0.1": 3.1803083419799805,
+          "pair_chains_pae_unweighted.1.0": 1.1805226802825928,
+          "pair_chains_pae_unweighted.1.1": 0.15665173530578613,
+          "chiral_centers_checked": 0.0,
+          "chiral_centers_inverted": 0.0,
+          "chiral_centers_flattened": 0.0,
+          "bonds_checked": 0.0,
+          "bonds_out_of_range": 0.0,
+          "structure_checks_passed": 0.0
+        }
+      },
+      "accuracy": {
+        "dockq": 0.4349912940503938,
+        "native_to_model_chain_map": {
+          "A": "A",
+          "B": "B"
+        },
+        "interfaces": {
+          "BA": {
+            "DockQ": 0.4349912940503938,
+            "chain1": "B",
+            "chain2": "A",
+            "chain_map": {
+              "B": "B",
+              "A": "A"
+            }
+          }
+        },
+        "per_chain": {
+          "A": 0.756578947368421,
+          "B": 0.9778732210693428
+        },
+        "observed_ca": {
+          "A": 10,
+          "B": 621
+        },
+        "mean_chain_lddt_ca": 0.8672260842188819,
+        "acceptable_interfaces": 1,
+        "interface_count": 1,
+        "state": "completed",
+        "identity": {
+          "scorer_identity_sha256": "4800a17adcac5b3a9e29a9cf7236f646855e35f4160bf02ceeaedbe3641ecfd6",
+          "native_pdb_sha256": "78e323a35c467cdfd15a7b31d45207fee995b5c655c1ea7b335c148c1965b4ba",
+          "prediction_nonempty_pdb_sha256": "09c78484d14b7834f8e5c1d9603c308ef5cbe72b1e39bcebae18dffde6089581",
+          "normalization": "remove_entirely_blank_lines_only_v1",
+          "primary_native_interfaces": [
+            [
+              "B",
+              "A"
+            ]
+          ]
+        },
+        "case": "8qlv-assembly1",
+        "seconds": 0.14319023699499667,
+        "key": "470992e9fc4fa0a89bdf0eac5076c3c40d2c1e89949a55fbccb390ec627585a8",
+        "group": "8qlv-assembly1-fast",
+        "mode": "fast",
+        "prediction_pdb_sha256": "09c78484d14b7834f8e5c1d9603c308ef5cbe72b1e39bcebae18dffde6089581",
+        "shared_score_cache_key": "470992e9fc4fa0a89bdf0eac5076c3c40d2c1e89949a55fbccb390ec627585a8"
+      }
+    },
+    {
+      "name": "8qlv-assembly1-off",
+      "state": "completed",
+      "returncode": 0,
+      "seconds": 43.43710165200173,
+      "identity": {
+        "case": "8qlv-assembly1",
+        "mode": "off",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae",
+          "--use_potentials"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "4a920c123c94ad02794fe7d318f22371b9e167583652c1ea39e649f2acefb877"
+        },
+        "driver_sha256": "4b156a8241b3f0e58e33be84169c7746f7c1a482eccc539c915e44429a43972b",
+        "seed": 0
+      },
+      "key": "3168f302f23a7e75ea25f448a01694af9fb1b3468e0a4883f5f4ab18b98e2b50",
+      "purpose": "New Blackwell kernel adaptation and current-main source qualification, distinct from historical requests",
+      "receipt_sha256": "6235eafe1c2f72150457a5364894556edc647f48cc35e2d181f62ddd83227ff5",
+      "receipt": "full-v2/8qlv-assembly1-off-full.json",
+      "log_sha256": "146c1a516f68eaaf3040a474d354619ca862c5418f3ed9be44f5b1b15118a46f",
+      "selected_census": [],
+      "accuracy": {
+        "dockq": 0.7559486814880501,
+        "native_to_model_chain_map": {
+          "A": "A",
+          "B": "B"
+        },
+        "interfaces": {
+          "BA": {
+            "DockQ": 0.7559486814880501,
+            "chain1": "B",
+            "chain2": "A",
+            "chain_map": {
+              "B": "B",
+              "A": "A"
+            }
+          }
+        },
+        "per_chain": {
+          "A": 0.8618421052631579,
+          "B": 0.9800844814877814
+        },
+        "observed_ca": {
+          "A": 10,
+          "B": 621
+        },
+        "mean_chain_lddt_ca": 0.9209632933754697,
+        "acceptable_interfaces": 1,
+        "interface_count": 1,
+        "state": "completed",
+        "identity": {
+          "scorer_identity_sha256": "4800a17adcac5b3a9e29a9cf7236f646855e35f4160bf02ceeaedbe3641ecfd6",
+          "native_pdb_sha256": "78e323a35c467cdfd15a7b31d45207fee995b5c655c1ea7b335c148c1965b4ba",
+          "prediction_nonempty_pdb_sha256": "c2bc06cef94193034f9488f29bf7ee745502e59b216bf4b0ce94eacdc4dd241c",
+          "normalization": "remove_entirely_blank_lines_only_v1",
+          "primary_native_interfaces": [
+            [
+              "B",
+              "A"
+            ]
+          ]
+        },
+        "case": "8qlv-assembly1",
+        "seconds": 7.563797407783568e-05,
+        "key": "d95815822dc970277b996f6a2b43fda4e5b71d22a11f9f9435676fa401c0fa76",
+        "group": "8qlv-assembly1-off",
+        "seed": 0,
+        "mode": "off",
+        "implementation": "fork",
+        "shared_score_cache_key": "d95815822dc970277b996f6a2b43fda4e5b71d22a11f9f9435676fa401c0fa76",
+        "reused_from": {
+          "path": "/home/bizon/novel-design/boltz-upstream-contract-20261102/groups/fork-off-8qlv-assembly1-s0/accuracy-v2.json",
+          "sha256": "be1ec7d5eaf34b359c28774619b0b28446e868de77fb576feaf063e7c7459754"
+        },
+        "prediction_pdb_sha256": "c2bc06cef94193034f9488f29bf7ee745502e59b216bf4b0ce94eacdc4dd241c"
+      }
+    },
+    {
+      "name": "prot_custom_msa-big",
+      "state": "completed",
+      "returncode": 0,
+      "seconds": 14.054137272993103,
+      "identity": {
+        "case": "prot_custom_msa",
+        "mode": "big",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "4a920c123c94ad02794fe7d318f22371b9e167583652c1ea39e649f2acefb877"
+        },
+        "driver_sha256": "4b156a8241b3f0e58e33be84169c7746f7c1a482eccc539c915e44429a43972b",
+        "seed": 0
+      },
+      "key": "7086893e1cd38482e5a2fb7abb005c4a72298239ee215b9cf612a5310c0a57aa",
+      "purpose": "New Blackwell kernel adaptation and current-main source qualification, distinct from historical requests",
+      "receipt_sha256": "99d02dbbe061dcd7054342ec8247593b3f99893376609df3bae7a6d40fdd97d0",
+      "receipt": "full-v2/prot_custom_msa-big-full.json",
+      "log_sha256": "1157ad8285db4d151b6de9a835e18818e7ffa61c0caf14c66d5fada7065508a4",
+      "selected_census": [
+        "[boltz2-opt] LEVER name=fpf_opm state=on impl=opt_core.ops.msa_opm:forward_mask_norm origin=core strategy=LOCAL.boltz2.fused_outer_product_mean execution=executed:16 served=16 fallback=0 errors=0 cfg=override:community_sm120 tma=True",
+        "[boltz2-opt] LEVER name=exactln state=on impl=opt_core.kernels.ln:exactln/exactln_fwd.cu origin=core strategy=LOCAL.boltz2.exact_layer_norm_replica variant=core served=878 fallback=1776 fallback_by=below_min_numel:1776 errors=0 idle=False gate=ok cc=120 cc_proven=False bitcmp_classes=6 bitcmp_mismatch=0 provider=core:opt_core-0.5.228.0"
+      ],
+      "output_comparison": {
+        "identity": {
+          "reference_sha256": "32719d47d74d4a8f3eea1d3ed95f5f29eeef748f1f4490ccfc376c636cc5d3d4",
+          "prediction_sha256": "f934726189c25a7f720df177084cb989d843fb574ea9c93ee2d4dd669602bc98",
+          "reference_confidence": "15eae533bd4ee7655c8aaa501c5e988c04f64f98b9a4fddddfaa9b9b24e96392",
+          "prediction_confidence": "5268fcdff68c272cadbcb351621390fc246e52783312622ab4db8c68f6451667",
+          "scorer": "99c40a67b05479c3108b33da590e750c6627986b903c76fd9dce5587faacb7fd"
+        },
+        "aligned_all_atom_rmsd_angstrom": 3.017254728911542,
+        "pdb_atomcoords_equal": false,
+        "common_confidence_deltas": {
+          "confidence_score": -0.013145744800567627,
+          "ptm": -0.02621626853942871,
+          "iptm": 0.0,
+          "ligand_iptm": 0.0,
+          "protein_iptm": 0.0,
+          "complex_plddt": -0.009878098964691162,
+          "complex_iplddt": -0.009878098964691162,
+          "complex_pde": 0.18370091915130615,
+          "complex_ipde": 0.0,
+          "chains_ptm.0": -0.02621626853942871,
+          "pair_chains_iptm.0.0": -0.02621626853942871,
+          "complex_pae": 0.44147491455078125,
+          "chains_pae.0": 0.44147491455078125,
+          "pair_chains_pae.0.0": 0.44147491455078125,
+          "complex_pae_unweighted": 1.0592641830444336,
+          "chains_pae_unweighted.0": 1.0592641830444336,
+          "pair_chains_pae_unweighted.0.0": 1.0592641830444336,
+          "chiral_centers_checked": 0.0,
+          "chiral_centers_inverted": 0.0,
+          "chiral_centers_flattened": 0.0,
+          "bonds_checked": 0.0,
+          "bonds_out_of_range": 0.0,
+          "structure_checks_passed": 0.0
+        }
+      }
+    },
+    {
+      "name": "prot_custom_msa-exact",
+      "state": "failed_profile",
+      "returncode": 3,
+      "seconds": 18.51442660499015,
+      "identity": {
+        "case": "prot_custom_msa",
+        "mode": "exact",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "4a920c123c94ad02794fe7d318f22371b9e167583652c1ea39e649f2acefb877"
+        },
+        "driver_sha256": "4b156a8241b3f0e58e33be84169c7746f7c1a482eccc539c915e44429a43972b",
+        "seed": 0
+      },
+      "key": "269c3ee382681b21e85ea108f3d2cfa2c97e39faf4781b85a2eaebbfef5d4167",
+      "purpose": "New Blackwell kernel adaptation and current-main source qualification, distinct from historical requests",
+      "receipt_sha256": "d4096224953c26b3a3bb060e03a5f087804756d0e060b250ade46fdbf21e87e0",
+      "receipt": "full-v2/prot_custom_msa-exact-full.json",
+      "log_sha256": "d237cfef93387285127f4088900d610fde9bbfc8658df99d7f39743c6df8db2a",
+      "selected_census": [
+        "[boltz2-opt] LEVER name=dit_smx state=off reason=unproven_cc:sm_120 impl=forward/ditexact/src/dx_token.py:softmax_scale_bias_mask origin=kit strategy=LOCAL.boltz2.dit_fused_softmax_replica words=par,mask,sba,smx,glue cc_refused=glue:unproven_cc:sm_120,smx:unproven_cc:sm_120",
+        "[boltz2-opt] LEVER name=dit_glue state=off reason=unproven_cc:sm_120 impl=forward/ditexact/src/dx_token.py:glue_affine origin=kit strategy=LOCAL.boltz2.dit_fused_glue_replicas words=par,mask,sba,smx,glue cc_refused=glue:unproven_cc:sm_120,smx:unproven_cc:sm_120",
+        "[boltz2-opt] LEVER name=exactln state=on impl=opt_core.kernels.ln:exactln/exactln_fwd.cu origin=core strategy=LOCAL.boltz2.exact_layer_norm_replica variant=core served=648 fallback=1172 fallback_by=below_min_numel:580,resid_below_min_numel:592 errors=0 idle=False gate=ok cc=120 cc_proven=False bitcmp_classes=6 bitcmp_mismatch=0 provider=core:opt_core-0.5.228.0",
+        "[boltz2-opt] LEVER name=msa_pwa_exact state=skipped reason=pin:cc120 impl=opt_core.ops.msa_pwa2:pwa_forward origin=core strategy=LOCAL.boltz2.fused_pair_weighted_averaging_exact",
+        "[boltz2-opt] LEVER name=msa_trans2_exact state=skipped reason=pin:cc120 impl=forward/msa2/trans2.py:transition64 origin=kit strategy=LOCAL.boltz2.fused_transition64_exact"
+      ],
+      "output_comparison": {
+        "identity": {
+          "reference_sha256": "32719d47d74d4a8f3eea1d3ed95f5f29eeef748f1f4490ccfc376c636cc5d3d4",
+          "prediction_sha256": "32719d47d74d4a8f3eea1d3ed95f5f29eeef748f1f4490ccfc376c636cc5d3d4",
+          "reference_confidence": "15eae533bd4ee7655c8aaa501c5e988c04f64f98b9a4fddddfaa9b9b24e96392",
+          "prediction_confidence": "15eae533bd4ee7655c8aaa501c5e988c04f64f98b9a4fddddfaa9b9b24e96392",
+          "scorer": "99c40a67b05479c3108b33da590e750c6627986b903c76fd9dce5587faacb7fd"
+        },
+        "aligned_all_atom_rmsd_angstrom": 2.3175231771673997e-15,
+        "pdb_atomcoords_equal": true,
+        "common_confidence_deltas": {
+          "confidence_score": 0.0,
+          "ptm": 0.0,
+          "iptm": 0.0,
+          "ligand_iptm": 0.0,
+          "protein_iptm": 0.0,
+          "complex_plddt": 0.0,
+          "complex_iplddt": 0.0,
+          "complex_pde": 0.0,
+          "complex_ipde": 0.0,
+          "chains_ptm.0": 0.0,
+          "pair_chains_iptm.0.0": 0.0,
+          "complex_pae": 0.0,
+          "chains_pae.0": 0.0,
+          "pair_chains_pae.0.0": 0.0,
+          "complex_pae_unweighted": 0.0,
+          "chains_pae_unweighted.0": 0.0,
+          "pair_chains_pae_unweighted.0.0": 0.0,
+          "chiral_centers_checked": 0.0,
+          "chiral_centers_inverted": 0.0,
+          "chiral_centers_flattened": 0.0,
+          "bonds_checked": 0.0,
+          "bonds_out_of_range": 0.0,
+          "structure_checks_passed": 0.0
+        }
+      }
+    },
+    {
+      "name": "prot_custom_msa-fast",
+      "state": "completed",
+      "returncode": 0,
+      "seconds": 34.45840699301334,
+      "identity": {
+        "case": "prot_custom_msa",
+        "mode": "fast",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "4a920c123c94ad02794fe7d318f22371b9e167583652c1ea39e649f2acefb877"
+        },
+        "driver_sha256": "4b156a8241b3f0e58e33be84169c7746f7c1a482eccc539c915e44429a43972b",
+        "seed": 0
+      },
+      "key": "54e3d3e19e54a02c02a6592483408674e74adc959a6aa4b16d019e074487457f",
+      "purpose": "New Blackwell kernel adaptation and current-main source qualification, distinct from historical requests",
+      "receipt_sha256": "78da7f2d2f2bb3950c7fcd06c4d79ba11b48a967ff432ed669d45b83c9c2477d",
+      "receipt": "full-v2/prot_custom_msa-fast-full.json",
+      "log_sha256": "99f2f3e321cfab34ea990798ba0b0034ed71d82b905423b40c6915f71cbe49b6",
+      "selected_census": [
+        "[boltz2-opt] LEVER name=fpf_opm state=on impl=opt_core.ops.msa_opm:forward_mask_norm origin=core strategy=LOCAL.boltz2.fused_outer_product_mean execution=executed:16 served=16 fallback=0 errors=0 cfg=override:community_sm120 tma=True",
+        "[boltz2-opt] LEVER name=exactln state=on impl=opt_core.kernels.ln:exactln/exactln_fwd.cu origin=core strategy=LOCAL.boltz2.exact_layer_norm_replica variant=core served=467 fallback=326 fallback_by=below_min_numel:326 errors=0 idle=False gate=ok cc=120 cc_proven=False bitcmp_classes=7 bitcmp_mismatch=0 provider=core:opt_core-0.5.228.0"
+      ],
+      "output_comparison": {
+        "identity": {
+          "reference_sha256": "32719d47d74d4a8f3eea1d3ed95f5f29eeef748f1f4490ccfc376c636cc5d3d4",
+          "prediction_sha256": "f31d339fe22182e2b6e713ffb5645fa66879d663b88467e4b55d6808a778e0ad",
+          "reference_confidence": "15eae533bd4ee7655c8aaa501c5e988c04f64f98b9a4fddddfaa9b9b24e96392",
+          "prediction_confidence": "79193dfa854db19a3f0f4c375ea93f94919d4ea3af7a6da591536c2b5e62ac9b",
+          "scorer": "99c40a67b05479c3108b33da590e750c6627986b903c76fd9dce5587faacb7fd"
+        },
+        "aligned_all_atom_rmsd_angstrom": 2.951843499656079,
+        "pdb_atomcoords_equal": false,
+        "common_confidence_deltas": {
+          "confidence_score": -0.00238722562789917,
+          "ptm": 0.0425071120262146,
+          "iptm": 0.0,
+          "ligand_iptm": 0.0,
+          "protein_iptm": 0.0,
+          "complex_plddt": -0.01361083984375,
+          "complex_iplddt": -0.01361083984375,
+          "complex_pde": -0.11242711544036865,
+          "complex_ipde": 0.0,
+          "chains_ptm.0": 0.0425071120262146,
+          "pair_chains_iptm.0.0": 0.0425071120262146,
+          "complex_pae": -0.2669394016265869,
+          "chains_pae.0": -0.2669394016265869,
+          "pair_chains_pae.0.0": -0.2669394016265869,
+          "complex_pae_unweighted": -0.8822154998779297,
+          "chains_pae_unweighted.0": -0.8822154998779297,
+          "pair_chains_pae_unweighted.0.0": -0.8822154998779297,
+          "chiral_centers_checked": 0.0,
+          "chiral_centers_inverted": 0.0,
+          "chiral_centers_flattened": 0.0,
+          "bonds_checked": 0.0,
+          "bonds_out_of_range": 0.0,
+          "structure_checks_passed": 0.0
+        }
+      }
+    },
+    {
+      "name": "prot_custom_msa-off",
+      "state": "completed",
+      "returncode": 0,
+      "seconds": 31.806186536996393,
+      "identity": {
+        "case": "prot_custom_msa",
+        "mode": "off",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "4a920c123c94ad02794fe7d318f22371b9e167583652c1ea39e649f2acefb877"
+        },
+        "driver_sha256": "4b156a8241b3f0e58e33be84169c7746f7c1a482eccc539c915e44429a43972b",
+        "seed": 0
+      },
+      "key": "ec2b6f2b67ba6c3e315fed41a148d6ef9cf4208fee0db088e9d35f05eac0923b",
+      "purpose": "New Blackwell kernel adaptation and current-main source qualification, distinct from historical requests",
+      "receipt_sha256": "814468b6b44a4e03faf395ee98837ada4f89e0597a56963363c9e48cd665ee9a",
+      "receipt": "full-v2/prot_custom_msa-off-full.json",
+      "log_sha256": "66f5f8dec415777523578ab330742173e3844985f8c20c0871ffcbfe1af02373",
+      "selected_census": []
+    },
+    {
+      "name": "8qlv-assembly1-exact",
+      "state": "completed",
+      "returncode": 0,
+      "seconds": 33.60779895100859,
+      "identity": {
+        "case": "8qlv-assembly1",
+        "mode": "exact",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae",
+          "--use_potentials"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "7881e97d45ef981c3c7ad0f17d689b5a1e386927279ca5596c58ca0558e655e7"
+        },
+        "driver_sha256": "22839c04f6e6cbef3f38b924f80982d90d7a398430a0149ff25d738dc5403f49",
+        "seed": 0
+      },
+      "key": "757c0ee0f0977697eafecd51f521b257833115481b990d6cad4b3a5c16ce2e0c",
+      "purpose": "New evidence version enabling all four directly probed Blackwell exact cells; reuse immutable off controls from full-v2, whose numerical execution path is unchanged",
+      "receipt_sha256": "648a6af3c07b67661115af29ff99cb157092eae42fa1336cb86841d94041fc58",
+      "receipt": "exact-v3/8qlv-assembly1-exact-full.json",
+      "log_sha256": "c55d264640085ee60893b9b1510e52bbf52b10cd11c9307dc06c2e71cc6301ec",
+      "selected_census": [
+        "[boltz2-opt] LEVER name=exactln state=on impl=opt_core.kernels.ln:exactln/exactln_fwd.cu origin=core strategy=LOCAL.boltz2.exact_layer_norm_replica variant=core served=26415 fallback=1851 fallback_by=below_min_numel:747,resid_below_min_numel:1104 errors=0 idle=False gate=ok cc=120 cc_proven=False bitcmp_classes=13 bitcmp_mismatch=0 provider=core:opt_core-0.5.228.0",
+        "[boltz2-opt] LEVER name=msa_pwa_exact state=on impl=opt_core.ops.msa_pwa2:pwa_forward origin=core strategy=LOCAL.boltz2.fused_pair_weighted_averaging_exact mode=exact served=15 compared=1 undetermined=0 calls=16 fallback=0 fallback_by=none floor=S>=16,rows>=65536 lock=elems>=1000000,calls>=1 classes_proven=1 classes_comparing=0 classes_floor=0 classes_refused=0 classes=636x1025:c:proven:cand3/und0/calls1/elems41721600:sel=[1,28]",
+        "[boltz2-opt] LEVER name=msa_trans2_exact state=on impl=forward/msa2/trans2.py:transition64 origin=kit strategy=LOCAL.boltz2.fused_transition64_exact mode=exact served=15 calls=16 fallback=0 fallback_by=none compared=1 floor=rows>=65536 lock=elems>=1000000,calls>=1 classes_proven=1 classes_comparing=0 classes_floor=0 classes_refused=0 classes=651900xfloat32:32:proven:cand0/und0/calls1/elems41721600",
+        "[boltz2-opt] LEVER name=dit_smx state=off reason=use_potentials impl=forward/ditexact/src/dx_token.py:softmax_scale_bias_mask origin=kit strategy=LOCAL.boltz2.dit_fused_softmax_replica",
+        "[boltz2-opt] LEVER name=dit_glue state=off reason=use_potentials impl=forward/ditexact/src/dx_token.py:glue_affine origin=kit strategy=LOCAL.boltz2.dit_fused_glue_replicas"
+      ],
+      "output_comparison": {
+        "identity": {
+          "reference_sha256": "c2bc06cef94193034f9488f29bf7ee745502e59b216bf4b0ce94eacdc4dd241c",
+          "prediction_sha256": "de41158e2194a9fc65311a1f99674053ebef4fdc15b21bf5a1059d214c92ed46",
+          "reference_confidence": "a683c2abd9f9664f2eaa655aa83c206f4a6e1f18d65ac97de5a528ff8b6cffce",
+          "prediction_confidence": "3e1ff66cf9c3b31589a7267b5846bb63ca894035fa7058747dbafc1155f0c258",
+          "scorer": "69baa2dd2efb249610bed73dad15a52b7296f56e29940975878f69467318172e"
+        },
+        "aligned_all_atom_rmsd_angstrom": 0.010594201199796366,
+        "pdb_atomcoords_equal": false,
+        "common_confidence_deltas": {
+          "confidence_score": 0.0007014274597167969,
+          "ptm": 0.0005454421043395996,
+          "iptm": 0.0017400383949279785,
+          "ligand_iptm": 0.0,
+          "protein_iptm": 0.0017400383949279785,
+          "complex_plddt": 0.0004418492317199707,
+          "complex_iplddt": 0.0011393427848815918,
+          "complex_pde": -0.000913769006729126,
+          "complex_ipde": -0.01876544952392578,
+          "chains_ptm.0": 0.002931952476501465,
+          "chains_ptm.1": 0.0005263090133666992,
+          "pair_chains_iptm.0.0": 0.002931952476501465,
+          "pair_chains_iptm.0.1": 0.0017400383949279785,
+          "pair_chains_iptm.1.0": 0.0032529830932617188,
+          "pair_chains_iptm.1.1": 0.0005263090133666992,
+          "complex_pae": -0.006309568881988525,
+          "complex_ipae": -0.12138080596923828,
+          "chains_pae.0": -0.13490831851959229,
+          "chains_pae.1": -0.0029735565185546875,
+          "pair_chains_pae.0.0": -0.13490831851959229,
+          "pair_chains_pae.0.1": -0.21189451217651367,
+          "pair_chains_pae.1.0": -0.030867338180541992,
+          "pair_chains_pae.1.1": -0.0029735565185546875,
+          "complex_pae_unweighted": -0.022339344024658203,
+          "complex_ipae_unweighted": -0.30746889114379883,
+          "chains_pae_unweighted.0": -0.23931145668029785,
+          "chains_pae_unweighted.1": -0.013165473937988281,
+          "pair_chains_pae_unweighted.0.0": -0.23931145668029785,
+          "pair_chains_pae_unweighted.0.1": -0.5807065963745117,
+          "pair_chains_pae_unweighted.1.0": -0.03422856330871582,
+          "pair_chains_pae_unweighted.1.1": -0.013165473937988281,
+          "chiral_centers_checked": 0.0,
+          "chiral_centers_inverted": 0.0,
+          "chiral_centers_flattened": 0.0,
+          "bonds_checked": 0.0,
+          "bonds_out_of_range": 0.0,
+          "structure_checks_passed": 0.0
+        }
+      },
+      "accuracy": {
+        "dockq": 0.7565013442871331,
+        "native_to_model_chain_map": {
+          "A": "A",
+          "B": "B"
+        },
+        "interfaces": {
+          "BA": {
+            "DockQ": 0.7565013442871331,
+            "chain1": "B",
+            "chain2": "A",
+            "chain_map": {
+              "B": "B",
+              "A": "A"
+            }
+          }
+        },
+        "per_chain": {
+          "A": 0.8618421052631579,
+          "B": 0.9800703067415093
+        },
+        "observed_ca": {
+          "A": 10,
+          "B": 621
+        },
+        "mean_chain_lddt_ca": 0.9209562060023335,
+        "acceptable_interfaces": 1,
+        "interface_count": 1,
+        "state": "completed",
+        "identity": {
+          "scorer_identity_sha256": "4800a17adcac5b3a9e29a9cf7236f646855e35f4160bf02ceeaedbe3641ecfd6",
+          "native_pdb_sha256": "78e323a35c467cdfd15a7b31d45207fee995b5c655c1ea7b335c148c1965b4ba",
+          "prediction_nonempty_pdb_sha256": "de41158e2194a9fc65311a1f99674053ebef4fdc15b21bf5a1059d214c92ed46",
+          "normalization": "remove_entirely_blank_lines_only_v1",
+          "primary_native_interfaces": [
+            [
+              "B",
+              "A"
+            ]
+          ]
+        },
+        "case": "8qlv-assembly1",
+        "seconds": 0.15111968401470222,
+        "key": "e984d1f02cd30a54271507eedf7144d53a9fb312c3588550a95bec8628742900",
+        "group": "8qlv-assembly1-exact",
+        "mode": "exact",
+        "prediction_pdb_sha256": "de41158e2194a9fc65311a1f99674053ebef4fdc15b21bf5a1059d214c92ed46",
+        "shared_score_cache_key": "e984d1f02cd30a54271507eedf7144d53a9fb312c3588550a95bec8628742900"
+      }
+    },
+    {
+      "name": "prot_custom_msa-exact",
+      "state": "completed",
+      "returncode": 0,
+      "seconds": 20.0702542400104,
+      "identity": {
+        "case": "prot_custom_msa",
+        "mode": "exact",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "7881e97d45ef981c3c7ad0f17d689b5a1e386927279ca5596c58ca0558e655e7"
+        },
+        "driver_sha256": "22839c04f6e6cbef3f38b924f80982d90d7a398430a0149ff25d738dc5403f49",
+        "seed": 0
+      },
+      "key": "dd9acea2f529b39baa3d4a584fe9490f7ce6d6ef130c875929c04dc1920de870",
+      "purpose": "New evidence version enabling all four directly probed Blackwell exact cells; reuse immutable off controls from full-v2, whose numerical execution path is unchanged",
+      "receipt_sha256": "c0cc7065427c8d210e4ced3940328c212c2b2d02048bce97158a6556a9a6fc51",
+      "receipt": "exact-v3/prot_custom_msa-exact-full.json",
+      "log_sha256": "b0c1cd35dd993af35a74f1e844d73bfbb557347fb0c2242f5084d313a6077942",
+      "selected_census": [
+        "[boltz2-opt] LEVER name=dit_smx state=on impl=forward/ditexact/src/dx_token.py:softmax_scale_bias_mask origin=kit strategy=LOCAL.boltz2.dit_fused_softmax_replica words=par,mask,sba,smx,glue installed=1 calls=2 calls_par=2 mask_skipped=2 mask_applied=0 sba_fused=48 sba_torch_by=none smx_fused=0 smx_bitcmp=none smx_declined_by=n_range:48 glue_fused=240 glue_bitcmp=affine:1x117x768:served,gres:1x117x768:served,swiglu:1x117x1536:served glue_declined_by=none cc_refused=none calls_prev=0 class_forward_by=none capturing_calls=1 n_spath=1 prefetch=1 idle=False gate=ok",
+        "[boltz2-opt] LEVER name=dit_glue state=on impl=forward/ditexact/src/dx_token.py:glue_affine origin=kit strategy=LOCAL.boltz2.dit_fused_glue_replicas words=par,mask,sba,smx,glue installed=1 calls=2 calls_par=2 mask_skipped=2 mask_applied=0 sba_fused=48 sba_torch_by=none smx_fused=0 smx_bitcmp=none smx_declined_by=n_range:48 glue_fused=240 glue_bitcmp=affine:1x117x768:served,gres:1x117x768:served,swiglu:1x117x1536:served glue_declined_by=none cc_refused=none calls_prev=0 class_forward_by=none capturing_calls=1 n_spath=1 prefetch=1 idle=False gate=ok",
+        "[boltz2-opt] LEVER name=exactln state=on impl=opt_core.kernels.ln:exactln/exactln_fwd.cu origin=core strategy=LOCAL.boltz2.exact_layer_norm_replica variant=core served=648 fallback=1172 fallback_by=below_min_numel:580,resid_below_min_numel:592 errors=0 idle=False gate=ok cc=120 cc_proven=False bitcmp_classes=6 bitcmp_mismatch=0 provider=core:opt_core-0.5.228.0",
+        "[boltz2-opt] LEVER name=msa_pwa_exact state=on impl=opt_core.ops.msa_pwa2:pwa_forward origin=core strategy=LOCAL.boltz2.fused_pair_weighted_averaging_exact mode=exact served=0 compared=0 undetermined=0 calls=16 fallback=16 fallback_by=small_class:117x1:u:16 floor=S>=16,rows>=65536 lock=elems>=1000000,calls>=1 classes_proven=0 classes_comparing=0 classes_floor=1 classes_refused=0 classes=117x1:u:floor:cand0/und0/calls0/elems0",
+        "[boltz2-opt] LEVER name=msa_trans2_exact state=on impl=forward/msa2/trans2.py:transition64 origin=kit strategy=LOCAL.boltz2.fused_transition64_exact mode=exact served=0 calls=16 fallback=16 fallback_by=small_class:117xfloat32:0:16 compared=0 floor=rows>=65536 lock=elems>=1000000,calls>=1 classes_proven=0 classes_comparing=0 classes_floor=1 classes_refused=0 classes=117xfloat32:0:floor:cand0/und0/calls0/elems0"
+      ],
+      "output_comparison": {
+        "identity": {
+          "reference_sha256": "32719d47d74d4a8f3eea1d3ed95f5f29eeef748f1f4490ccfc376c636cc5d3d4",
+          "prediction_sha256": "32719d47d74d4a8f3eea1d3ed95f5f29eeef748f1f4490ccfc376c636cc5d3d4",
+          "reference_confidence": "15eae533bd4ee7655c8aaa501c5e988c04f64f98b9a4fddddfaa9b9b24e96392",
+          "prediction_confidence": "15eae533bd4ee7655c8aaa501c5e988c04f64f98b9a4fddddfaa9b9b24e96392",
+          "scorer": "69baa2dd2efb249610bed73dad15a52b7296f56e29940975878f69467318172e"
+        },
+        "aligned_all_atom_rmsd_angstrom": 2.3175231771673997e-15,
+        "pdb_atomcoords_equal": true,
+        "common_confidence_deltas": {
+          "confidence_score": 0.0,
+          "ptm": 0.0,
+          "iptm": 0.0,
+          "ligand_iptm": 0.0,
+          "protein_iptm": 0.0,
+          "complex_plddt": 0.0,
+          "complex_iplddt": 0.0,
+          "complex_pde": 0.0,
+          "complex_ipde": 0.0,
+          "chains_ptm.0": 0.0,
+          "pair_chains_iptm.0.0": 0.0,
+          "complex_pae": 0.0,
+          "chains_pae.0": 0.0,
+          "pair_chains_pae.0.0": 0.0,
+          "complex_pae_unweighted": 0.0,
+          "chains_pae_unweighted.0": 0.0,
+          "pair_chains_pae_unweighted.0.0": 0.0,
+          "chiral_centers_checked": 0.0,
+          "chiral_centers_inverted": 0.0,
+          "chiral_centers_flattened": 0.0,
+          "bonds_checked": 0.0,
+          "bonds_out_of_range": 0.0,
+          "structure_checks_passed": 0.0
+        }
+      }
+    },
+    {
+      "name": "8qlv-assembly1-exact",
+      "state": "completed",
+      "returncode": 0,
+      "seconds": 27.590192420990206,
+      "identity": {
+        "case": "8qlv-assembly1",
+        "mode": "exact",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "7881e97d45ef981c3c7ad0f17d689b5a1e386927279ca5596c58ca0558e655e7"
+        },
+        "driver_sha256": "0221e959f22fdc76750760ba9a77a6ece5d5ffdcc14ffb276212ddbf548ee3a9",
+        "seed": 0
+      },
+      "key": "10ec7f2ed62d88c1c223dcef7744aa87bfcf68558321b7bad9b7d9e12edb3a1f",
+      "purpose": "Distinct unguided evidence purpose: exercise fused softmax and glue inside a full 636-token prediction; historical controls are guided and incompatible, original and failed receipts preserved; direct probes already pass, production gates unchanged",
+      "receipt_sha256": "fdab8ba0c41792e0d3810d175a2f4cc713dd4e923af1100a60d7708d75bdb66b",
+      "receipt": "unguided-v4/8qlv-assembly1-exact-full.json",
+      "log_sha256": "f6a61371e5c505897b69b964cf30660f18c10bd1e128309cd5b86db7bdf30f71",
+      "selected_census": [
+        "[boltz2-opt] LEVER name=dit_smx state=on impl=forward/ditexact/src/dx_token.py:softmax_scale_bias_mask origin=kit strategy=LOCAL.boltz2.dit_fused_softmax_replica words=par,mask,sba,smx,glue installed=1 calls=2 calls_par=2 mask_skipped=2 mask_applied=0 sba_fused=0 sba_torch_by=none smx_fused=48 smx_bitcmp=N636:served smx_declined_by=none glue_fused=240 glue_bitcmp=affine:1x636x768:served,gres:1x636x768:served,swiglu:1x636x1536:served glue_declined_by=none cc_refused=none calls_prev=0 class_forward_by=none capturing_calls=1 n_spath=1 prefetch=1 idle=False gate=ok",
+        "[boltz2-opt] LEVER name=dit_glue state=on impl=forward/ditexact/src/dx_token.py:glue_affine origin=kit strategy=LOCAL.boltz2.dit_fused_glue_replicas words=par,mask,sba,smx,glue installed=1 calls=2 calls_par=2 mask_skipped=2 mask_applied=0 sba_fused=0 sba_torch_by=none smx_fused=48 smx_bitcmp=N636:served smx_declined_by=none glue_fused=240 glue_bitcmp=affine:1x636x768:served,gres:1x636x768:served,swiglu:1x636x1536:served glue_declined_by=none cc_refused=none calls_prev=0 class_forward_by=none capturing_calls=1 n_spath=1 prefetch=1 idle=False gate=ok",
+        "[boltz2-opt] LEVER name=exactln state=on impl=opt_core.kernels.ln:exactln/exactln_fwd.cu origin=core strategy=LOCAL.boltz2.exact_layer_norm_replica variant=core served=1215 fallback=1892 fallback_by=below_min_numel:788,resid_below_min_numel:1104 errors=0 idle=False gate=ok cc=120 cc_proven=False bitcmp_classes=8 bitcmp_mismatch=0 provider=core:opt_core-0.5.228.0",
+        "[boltz2-opt] LEVER name=msa_pwa_exact state=on impl=opt_core.ops.msa_pwa2:pwa_forward origin=core strategy=LOCAL.boltz2.fused_pair_weighted_averaging_exact mode=exact served=15 compared=1 undetermined=0 calls=16 fallback=0 fallback_by=none floor=S>=16,rows>=65536 lock=elems>=1000000,calls>=1 classes_proven=1 classes_comparing=0 classes_floor=0 classes_refused=0 classes=636x1025:c:proven:cand3/und0/calls1/elems41721600:sel=[1,28]",
+        "[boltz2-opt] LEVER name=msa_trans2_exact state=on impl=forward/msa2/trans2.py:transition64 origin=kit strategy=LOCAL.boltz2.fused_transition64_exact mode=exact served=15 calls=16 fallback=0 fallback_by=none compared=1 floor=rows>=65536 lock=elems>=1000000,calls>=1 classes_proven=1 classes_comparing=0 classes_floor=0 classes_refused=0 classes=651900xfloat32:32:proven:cand0/und0/calls1/elems41721600"
+      ],
+      "output_comparison": {
+        "identity": {
+          "reference_sha256": "dc171d170acac518c1011e95a5fbb7afa26c0c500535c9f52dd969efc6fff6d0",
+          "prediction_sha256": "dd4d8571cf3b2b1e299cf0459a5db7e4784cb53f25938f39bf0a5fb6965d614d",
+          "reference_confidence": "764003032150c0d97095e4a7b662a4ebdcfb602afe11841af8663b29fae2cfb2",
+          "prediction_confidence": "d4af01e6577fd7398e49d8698b87f0eca38eda916c7150439be246300a9f4d92",
+          "scorer": "e8cf3e7b7c9c332255c71ad56acd972490c64d3dd40b88ea84affb90d73dd9de"
+        },
+        "aligned_all_atom_rmsd_angstrom": 0.014242543083430304,
+        "pdb_atomcoords_equal": false,
+        "common_confidence_deltas": {
+          "confidence_score": 0.0007795095443725586,
+          "ptm": 0.0008313655853271484,
+          "iptm": 0.002891838550567627,
+          "ligand_iptm": 0.0,
+          "protein_iptm": 0.002891838550567627,
+          "complex_plddt": 0.00025141239166259766,
+          "complex_iplddt": 0.0010682344436645508,
+          "complex_pde": -0.0022560954093933105,
+          "complex_ipde": -0.060294389724731445,
+          "chains_ptm.0": 0.004826247692108154,
+          "chains_ptm.1": 0.0007984042167663574,
+          "pair_chains_iptm.0.0": 0.004826247692108154,
+          "pair_chains_iptm.0.1": 0.002891838550567627,
+          "pair_chains_iptm.1.0": 0.002996504306793213,
+          "pair_chains_iptm.1.1": 0.0007984042167663574,
+          "complex_pae": -0.005720555782318115,
+          "complex_ipae": -0.16933917999267578,
+          "chains_pae.0": -0.12487328052520752,
+          "chains_pae.1": -0.0013099312782287598,
+          "pair_chains_pae.0.0": -0.12487328052520752,
+          "pair_chains_pae.0.1": -0.2663140296936035,
+          "pair_chains_pae.1.0": -0.07236480712890625,
+          "pair_chains_pae.1.1": -0.0013099312782287598,
+          "complex_pae_unweighted": -0.027075767517089844,
+          "complex_ipae_unweighted": -0.33553028106689453,
+          "chains_pae_unweighted.0": -0.23711466789245605,
+          "chains_pae_unweighted.1": -0.017157316207885742,
+          "pair_chains_pae_unweighted.0.0": -0.23711466789245605,
+          "pair_chains_pae_unweighted.0.1": -0.6062078475952148,
+          "pair_chains_pae_unweighted.1.0": -0.06485319137573242,
+          "pair_chains_pae_unweighted.1.1": -0.017157316207885742,
+          "chiral_centers_checked": 0.0,
+          "chiral_centers_inverted": 0.0,
+          "chiral_centers_flattened": 0.0,
+          "bonds_checked": 0.0,
+          "bonds_out_of_range": 0.0,
+          "structure_checks_passed": 0.0
+        }
+      }
+    },
+    {
+      "name": "8qlv-assembly1-off",
+      "state": "completed",
+      "returncode": 0,
+      "seconds": 35.45388761701179,
+      "identity": {
+        "case": "8qlv-assembly1",
+        "mode": "off",
+        "options": [
+          "--seed",
+          "0",
+          "--recycling_steps",
+          "3",
+          "--sampling_steps",
+          "200",
+          "--diffusion_samples",
+          "1",
+          "--max_parallel_samples",
+          "3",
+          "--max_msa_seqs",
+          "8192",
+          "--num_workers",
+          "1",
+          "--output_format",
+          "pdb",
+          "--write_full_pae"
+        ],
+        "inputs": {
+          "inputs/8qlv-assembly1.yaml": "2ceb361abfbb5db8e27d02f15929ea3446a4bb0a8d33e67489debaad79234c91",
+          "inputs/prot_custom_msa.yaml": "5ce07305fc939d384fb7ee72a3c436f8d2002a7f129d77882f1eb99362d060a6",
+          "msa/8qlv-assembly1-A.csv": "2a100531bd0a6b1ba87e709bf92f97f2724e5bff1dac7cd9216959edefaa5a44",
+          "msa/8qlv-assembly1-B.csv": "633bab0c23fbd59c077ca6886438f3edcd70635bdcb6a786a14e1b6190cae65f"
+        },
+        "runtime": {
+          "checkpoint_sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "torch": "2.12.0+cu130",
+          "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "driver": "580.65.06",
+          "contract": "7881e97d45ef981c3c7ad0f17d689b5a1e386927279ca5596c58ca0558e655e7"
+        },
+        "driver_sha256": "0221e959f22fdc76750760ba9a77a6ece5d5ffdcc14ffb276212ddbf548ee3a9",
+        "seed": 0
+      },
+      "key": "fdf38c4f4ec861a781beabaa2b7cabf95f948c14a5a80b0fbccc015d003496e0",
+      "purpose": "Distinct unguided evidence purpose: exercise fused softmax and glue inside a full 636-token prediction; historical controls are guided and incompatible, original and failed receipts preserved; direct probes already pass, production gates unchanged",
+      "receipt_sha256": "a70edcacf282ff6e7687681829db133088cca721bd0cd42480969e59d9bd6107",
+      "receipt": "unguided-v4/8qlv-assembly1-off-full.json",
+      "log_sha256": "16978cdfa5e91c0f24593916f2b89fb539cc68519829c544ab5ec75ce954c218",
+      "selected_census": []
+    }
+  ],
+  "artifacts": {
+    "probe-results.json": "67615d88bc8d32d7bdc81d84b08e3198998c89de3de45eca59bd9ac7500f893b",
+    "nonzero-results.json": "d9a0487a0f222713a8ee413b02f923fff9cf6a7966ae089d2ceeecaa405384a6",
+    "exact-cell-probe/results.json": "f5f7b6b7d359794ab2a9f91d9ae2290dc370d55a1005e47301a1b7c7e052fe04",
+    "pwa-cell-probe/results.json": "31d067cc0c8b16915523fa61e7f7fa5eaad71167499e743123aac26de53cb97d",
+    "full-v2/8qlv-assembly1-big-comparison.json": "17caa2ffb83d2e5d2394a0daa1e72a1bf65892e09cfde579bfda49e1f30e783c",
+    "full-v2/8qlv-assembly1-big-accuracy.json": "f4af08193c759f75204150e858e033365bb4166233414e12da2f07114eaaa358",
+    "full-v2/8qlv-assembly1-exact-comparison.json": "6681ffaeb24124fe974057ef0ec34908654fd689b0a3e0f86c5fdaee1ff76308",
+    "full-v2/8qlv-assembly1-exact-accuracy.json": "90a91696e2e8047bd48c795d3b8cb1000219e98536c7deadf5583f5c0181bf98",
+    "full-v2/8qlv-assembly1-fast-comparison.json": "b5a06c4f0dcfa3a7c8253f08b2970084e26c5880eeb39e5e1b8183ca92fe9e7c",
+    "full-v2/8qlv-assembly1-fast-accuracy.json": "7e2bf1011c8190fe75ce0572df68eec4c959fb1cabaa64ebc6f50bed0ce7a98f",
+    "full-v2/8qlv-assembly1-off-accuracy.json": "5524dba594b663d6148338ed8047ee51a923ff2802beae9b775b2c5a107a11a7",
+    "full-v2/prot_custom_msa-big-comparison.json": "6bd6ea8c158129987308333dc62eafd73cabf95c04e6cde20d58c3596b96b24b",
+    "full-v2/prot_custom_msa-exact-comparison.json": "4a3e204ebf380f794d8c8ef2d65f8a39abcab5b9f9df7b40565b00f85bad7d8c",
+    "full-v2/prot_custom_msa-fast-comparison.json": "443136851854ad7e873475848c0533f5b96a163aafbea123500416faad726a16",
+    "full-v2/full-proposal.json": "4a32fdadd46a13b01905cba6e01e351412ea8a40d477dcf82d820e5b9bfe32e5",
+    "exact-v3/8qlv-assembly1-exact-comparison.json": "d86a9a0ad0108ea8724364bbf71c3af1ac416ed3bcaf099e9e72bb30205c63ec",
+    "exact-v3/8qlv-assembly1-exact-accuracy.json": "90a91696e2e8047bd48c795d3b8cb1000219e98536c7deadf5583f5c0181bf98",
+    "exact-v3/prot_custom_msa-exact-comparison.json": "16aa45d3bd5822e3fec8e40808042f3fd36ed802599af5e471ea46f5cdc5375a",
+    "exact-v3/full-proposal.json": "77c1d80e7fa6b73add18ee63895efc173f9db7c8277c8151b1c8857e3f4be5f6",
+    "unguided-v4/8qlv-assembly1-exact-comparison.json": "fc55c2a5dcd2f3aca6fc4287457e574f07e03c7efa36853dd7ed47dd7e516cec",
+    "unguided-v4/full-proposal.json": "ff428e7a5fa4babb1643656ee05202a66c4993f0793e7480fa5a0ea661f11ad4",
+    "accuracy-plan.json": "ffd62ca3d8dc7e72f9d05b91258f9c8d3a10e9b3f3416e915a1247edf037d9d0",
+    "dist-v3/boltz_community-2.14.0-py3-none-any.whl": "c7119d0449f82e5b6dec14a71292260f15c3bcb75daab2e0967ce20687c6134f",
+    "boltz_community-2.14.0-py3-none-any.whl": "ecf1d542319b46da42c8e47ab229244aa8b3c87d9d73ac1be25c2eb453d371d8"
+  },
+  "cold_timings_are_not_speedups": true,
+  "cpu_tests_passed": 40,
+  "post_validation_compute_processes": ""
+}
