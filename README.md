@@ -11,8 +11,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Dependency pins relaxed from `==` to `>=`
 - `fairscale` dependency removed — replaced with PyTorch built-in `torch.utils.checkpoint`
 - `numpy<2.0` cap removed
-- `requires-python` widened to `>=3.10` (removed `<3.13` cap)
-- Requires PyTorch 2.4 or newer; CI tests the 2.4 minimum alongside the latest release. Compatible with Lightning 2.6+
+- Requires Python 3.14+ and PyTorch 2.15+. CPU CI validates Python 3.14 with PyTorch 2.15.0; legacy runtime support and its dedicated CI job have been retired. Compatible with Lightning 2.6+
 
 **Bug fixes:**
 - Fixed PDB `CONECT` serials when atoms are missing and `TER` records for noncontiguous chain IDs ([#40](https://github.com/Novel-Therapeutics/boltz-community/pull/40))
@@ -131,6 +130,12 @@ Pull requests are welcome! If you have a bug fix, test improvement, or compatibi
 
 ## Installation
 
+Use Python 3.14 or newer and PyTorch 2.15 or newer in a fresh environment.
+Compiled dependency minimums include Python 3.14 wheels. Older Python and
+PyTorch environments are no longer supported.
+On Intel macOS, use a Linux CPU environment or container; the PyTorch 2.15
+macOS wheels target Apple Silicon.
+
 Install from PyPI:
 
 ```
@@ -150,6 +155,12 @@ uv add boltz-community            # or: uv add "boltz-community[cuda]"
 ```
 
 If you are installing on CPU-only or non-CUDA GPU hardware, omit `[cuda]`. Note that the CPU version is significantly slower than the GPU version.
+
+PyTorch 2.15's default NVIDIA wheels use CUDA 13.2 and require a compatible
+driver and a Turing (sm_75) or newer GPU. CPU, Apple Silicon and Intel GPU
+installations use their respective PyTorch builds. Optional CUDA kernels and
+the experimental engine have additional hardware and runtime requirements.
+The `[cuda]` extra installs the CUDA 13 cuEquivariance packages.
 
 ### Experimental Anthropic engine
 

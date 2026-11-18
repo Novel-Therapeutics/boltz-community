@@ -53,6 +53,7 @@ def main():
         "The engine reserves its output root before either prediction route launches.",
         "The worker keeps named failures distinct from complete output files.",
         "The off route accounts for named writer failures without abandoning successful records.",
+        "Python 3.14 / PyTorch 2.15 replaces legacy autocast API fallbacks; numerical pins are unchanged.",
     ]
     contract_path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
     print("Recorded integrated engine, assets and fork source identities")

@@ -11,7 +11,7 @@ from torch.nn.functional import one_hot
 import boltz.model.layers.initialize as init
 from boltz.model.layers.transition import Transition
 from boltz.model.modules.transformersv2 import AtomTransformer
-from boltz.model.modules.utils import LinearNoBias, autocast_device_type
+from boltz.model.modules.utils import LinearNoBias
 
 
 class FourierEmbedding(Module):
@@ -313,7 +313,7 @@ class AtomEncoder(Module):
         s_trunk=None,  # Float['bm n ts'],
         z=None,  # Float['bm n n tz'],
     ):
-        with torch.autocast(autocast_device_type(feats["ref_pos"].device.type), enabled=False):
+        with torch.autocast(feats["ref_pos"].device.type, enabled=False):
             B, N, _ = feats["ref_pos"].shape
             atom_mask = feats["atom_pad_mask"].bool()  # Bool['b m'],
 
@@ -488,7 +488,7 @@ class AtomAttentionEncoder(Module):
             conditioning_cache=conditioning_cache,
         )
 
-        with torch.autocast(autocast_device_type(q.device.type), enabled=False):
+        with torch.autocast(q.device.type, enabled=False):
             q_to_a = self.atom_to_token_trans(q).float()
             atom_to_token = feats["atom_to_token"].float()
             atom_to_token = atom_to_token.repeat_interleave(multiplicity, 0)
@@ -552,7 +552,7 @@ class AtomAttentionDecoder(Module):
         multiplicity=1,
         conditioning_cache=None,
     ):
-        with torch.autocast(autocast_device_type(a.device.type), enabled=False):
+        with torch.autocast(a.device.type, enabled=False):
             atom_to_token = feats["atom_to_token"].float()
             atom_to_token = atom_to_token.repeat_interleave(multiplicity, 0)
 

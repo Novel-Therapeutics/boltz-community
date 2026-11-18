@@ -3,7 +3,6 @@ from einops.layers.torch import Rearrange
 from torch import Tensor, nn
 
 import boltz.model.layers.initialize as init
-from boltz.model.modules.utils import autocast_device_type
 
 
 class AttentionPairBias(nn.Module):
@@ -117,7 +116,7 @@ class AttentionPairBias(nn.Module):
 
         g = self.proj_g(s).sigmoid()
 
-        with torch.autocast(autocast_device_type(q.device.type), enabled=False):
+        with torch.autocast(q.device.type, enabled=False):
             # Compute attention weights
             attn = torch.einsum("bihd,bjhd->bhij", q.float(), k.float())
             attn = attn / (self.head_dim**0.5) + z.float()

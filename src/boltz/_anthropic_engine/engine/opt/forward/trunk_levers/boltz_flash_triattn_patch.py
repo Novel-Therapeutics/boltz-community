@@ -90,12 +90,9 @@ def _import_flash():
 
 
 def _autocast_dtype() -> Optional[torch.dtype]:
-    if not torch.is_autocast_enabled():
+    if not torch.is_autocast_enabled("cuda"):
         return None
-    try:
-        return torch.get_autocast_dtype("cuda")
-    except Exception:  # older torch
-        return torch.get_autocast_gpu_dtype()
+    return torch.get_autocast_dtype("cuda")
 
 
 def label_modules(model: torch.nn.Module) -> int:

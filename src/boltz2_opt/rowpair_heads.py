@@ -91,12 +91,8 @@ class _Ambient:
     def __init__(self, device):
         import torch
         self.device_type = "cuda" if getattr(device, "type", str(device)) == "cuda" else "cpu"
-        try:
-            self.enabled = bool(torch.is_autocast_enabled(self.device_type))
-            self.dtype = torch.get_autocast_dtype(self.device_type)
-        except TypeError:                                                 # torch < 2.4 spelling
-            self.enabled = bool(torch.is_autocast_enabled() if self.device_type == "cuda" else torch.is_autocast_cpu_enabled())
-            self.dtype = torch.get_autocast_gpu_dtype() if self.device_type == "cuda" else torch.get_autocast_cpu_dtype()
+        self.enabled = torch.is_autocast_enabled(self.device_type)
+        self.dtype = torch.get_autocast_dtype(self.device_type)
 
     def enter(self):
         import torch

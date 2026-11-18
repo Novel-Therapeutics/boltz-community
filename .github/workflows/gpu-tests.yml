@@ -20,22 +20,32 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
-      - name: Install GPU-compatible PyTorch
-        run: pip install "torch==2.10.0"
+      # PyTorch 2.15's CUDA 13.2 wheels retain T4 (sm_75) support. The runner
+      # image must provide a driver compatible with CUDA 13.2.
+      - name: Install PyTorch CUDA build
+        run: python -m pip install "torch==2.15.0" --index-url https://download.pytorch.org/whl/cu132
 
       - name: Install dependencies
-        run: pip install -e ".[test]"
+        run: |
+          python -m pip install -e ".[test,cuda]"
+          python -m pip check
 
       - name: Show GPU stack
         run: |
           python - <<'PY'
+          import sys
           import torch
 
+          print(sys.version)
           print("torch", torch.__version__)
           print("torch cuda", torch.version.cuda)
           print("cuda available", torch.cuda.is_available())
+          assert sys.version_info[:2] == (3, 14)
+          assert torch.__version__.split("+")[0] == "2.15.0"
+          assert torch.version.cuda == "13.2"
+          assert torch.cuda.is_available()
           PY
           nvidia-smi
 
