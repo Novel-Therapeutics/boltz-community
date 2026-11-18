@@ -348,6 +348,11 @@ def apply(spec: Optional[str] = None) -> List[str]:
         if u == "opm":
             cfg = (os.environ.get("FPF_OPM_CFG") or "").strip()
             O = _il.import_module(CORE_OPM)
+            if not cfg:
+                from boltz.upstream.blackwell import configure_opm
+                selected = configure_opm(O, O.device_cc() or ())
+                if selected:
+                    os.environ["FPF_OPM_CFG"] = selected
             if cfg and cfg not in getattr(O, "CFG_VARIANTS", {}):
                 raise RuntimeError(f"{U['cfg_switch']}={cfg!r}: not a configuration of {CORE_OPM}.CFG_VARIANTS")
         else:

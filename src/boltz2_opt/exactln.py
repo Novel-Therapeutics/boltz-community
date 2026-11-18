@@ -146,7 +146,11 @@ def face_word(cc, torch_version) -> Optional[str]:
     try:
         LN.admits(CORE_ROW, tuple(cc), "fp32")
     except LN.Refusal as e:
-        return _word(str(getattr(e, "kind", e)))
+        from boltz.upstream.blackwell import admits_layernorm
+
+        architecture_refusal = str(getattr(e, "kind", "")).startswith("cc:12.0_not_proven")
+        if not architecture_refusal or not admits_layernorm(LN.carried_module(CORE_ROW), cc, torch_version):
+            return _word(str(getattr(e, "kind", e)))
     pin = getattr(LN.carried_module(CORE_ROW), "TORCH_PIN", None)
     if pin and not str(torch_version).startswith(str(pin)):
         return _word(f"torch_version:{torch_version}!={pin}")
@@ -195,7 +199,7 @@ def apply(spec: Optional[str] = None) -> List[str]:
     t0 = time.time()
     E.precompile(PRECOMPILE["widths"], dtypes=("float32",), affine=PRECOMPILE["affine"])
     _STATE["facts"] = {"precompile_s": round(time.time() - t0, 2), "cc": cc, "device": p.name,
-                       "cc_proven": True, "torch_pin": getattr(E, "TORCH_PIN", None), "provider": _provider_word(v, E)}          # informational (LEVER line): on any card the first-call bit comparison per shape class is the gate — a class that does not reproduce torch's bits is refused by name at run time and the run stays stock-exact
+                       "cc_proven": (p.major, p.minor) != (12, 0), "community_runtime_bitcheck": (p.major, p.minor) == (12, 0), "torch_pin": getattr(E, "TORCH_PIN", None), "provider": _provider_word(v, E)}          # informational (LEVER line): on any card the first-call bit comparison per shape class is the gate — a class that does not reproduce torch's bits is refused by name at run time and the run stays stock-exact
     orig = F.layer_norm
     served, fallback, errors = _STATE["served"], _STATE["fallback"], _STATE["errors"]
     bf16, fp16, fp32 = torch.bfloat16, torch.float16, torch.float32
