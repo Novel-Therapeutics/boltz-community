@@ -10,7 +10,7 @@
     "The engine reserves its output root before either prediction route launches.",
     "The worker keeps named failures distinct from complete output files.",
     "The off route accounts for named writer failures without abandoning successful records.",
-    "Python 3.14 / PyTorch 2.15 replaces legacy autocast API fallbacks; numerical pins are unchanged."
+    "The Python 3.14 runtime upgrade removes legacy PyTorch autocast fallbacks and preserves numerical pins."
   ],
   "engine_files": {
     "LICENSE": "8fb5aa0df77ed9762b84c7acd3f810080de64d8781335c25a93c3c054a6aa53a",

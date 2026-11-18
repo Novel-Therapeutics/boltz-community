@@ -10,14 +10,15 @@ The engine, worker, optimization levers and required reference numerical source
 are included in the boltz-community distribution. Install the separately distributed
 `opt_core` provider using the pinned checkout's `common/opt_core` instructions in
 [the README](../README.md#flashpairformer-kernels). The integrated engine requires
-opt_core 0.5.228.0 or newer. This distribution now requires Python 3.14+ and
-PyTorch 2.15+. The historical GPU validation below used PyTorch 2.12.0+cu130,
+opt_core 0.5.228.0 or newer. The base distribution requires Python 3.14+ and
+PyTorch 2.10+. The optional GPU paths have their own runtime requirements.
+The historical GPU validation below used PyTorch 2.12.0+cu130,
 Triton 3.7.0 and the recorded opt_core version; its
 [pinned stack recipe](https://github.com/anthropics/uplifting-biomolecular-modeling/blob/f4f62fa6592ae4938d49b1757bea0cfeff9f468e/boltz2/STOCK.md)
 describes that earlier evidence, not the current installation requirements.
 
-The new runtime is validated by the CPU suite. The optimized GPU profiles have
-not been revalidated on PyTorch 2.15. Their original runtime admission pins and
+The CPU suite covers Python 3.14 with PyTorch 2.10 and 2.15. The optimized GPU
+profiles have not been revalidated on PyTorch 2.15. Their original runtime admission pins and
 reference numerical hashes remain intact: a pinned optimization can step aside
 or refuse an unsupported stack. Earlier bitwise and performance results do not
 establish equivalence on the new runtime. Legacy autocast API fallbacks have

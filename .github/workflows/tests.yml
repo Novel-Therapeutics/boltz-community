@@ -9,11 +9,16 @@ on:
 
 jobs:
   cpu-tests:
-    name: CPU tests
+    name: CPU tests (PyTorch ${{ matrix.torch }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Validate both the primary CI target and the package minimum.
+        torch: ["2.15.0", "2.10.0"]
     env:
-      TORCH_VERSION: "2.15.0"
+      TORCH_VERSION: ${{ matrix.torch }}
 
     steps:
       - uses: actions/checkout@v7
