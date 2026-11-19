@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """``pred --mode exact|fast``: the kits' persistent worker on the caller's YAMLs — the kit route.
 
 One process per call: the mode's kit files are staged (stack.stage), the worker variant is derived by the sampler add-on's own script, the

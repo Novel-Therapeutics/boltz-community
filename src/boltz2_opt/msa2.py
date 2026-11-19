@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.msa2 — the MSA track's engine adapter (BOLTZ2-FASTER, track MSA): second-generation MSA-module levers carried in ``opt/forward/msa2/``,
 superseding the kit-carried fpf_msa kernels BY NAME where they overlap (registry words proposed in the LEVER_SPECs; the row owner assigns the
 row word — one row env word per lever, apply() reports state=on|off|skipped with a reason by name, ``off`` = the exact stock statement).
@@ -194,6 +197,10 @@ def _pin_word(unit: str):
         return "pin:no_cuda"
     cc = tuple(torch.cuda.get_device_capability(0))
     if cc not in EXACT_PIN["cc"][unit]:
+        from boltz.upstream.blackwell import admits_exact_cell
+        module = importlib.import_module(CORE_PWA2 if unit == "pwa2x" else f"{PACKAGE}.trans2")
+        if admits_exact_cell(module, unit, cc, torch.__version__, torch.version.cuda):
+            return None
         return f"pin:cc{cc[0]}{cc[1]}"
     if not torch.__version__.startswith(EXACT_PIN["torch"]):
         return f"pin:torch{torch.__version__.split('+')[0]}"

@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.msa_kernels — the engine adapter of the shared core's fused MSA-module Triton cells (``opt_core.ops.msa_opm`` / ``opt_core.ops.msa_pwa``) onto
 Boltz-2's MSA-module layers, through this tree's Boltz-2 entry points (``opt/forward/fpf_msa/boltz2.py``):
 
@@ -348,6 +351,11 @@ def apply(spec: Optional[str] = None) -> List[str]:
         if u == "opm":
             cfg = (os.environ.get("FPF_OPM_CFG") or "").strip()
             O = _il.import_module(CORE_OPM)
+            if not cfg:
+                from boltz.upstream.blackwell import configure_opm
+                selected = configure_opm(O, O.device_cc() or ())
+                if selected:
+                    os.environ["FPF_OPM_CFG"] = selected
             if cfg and cfg not in getattr(O, "CFG_VARIANTS", {}):
                 raise RuntimeError(f"{U['cfg_switch']}={cfg!r}: not a configuration of {CORE_OPM}.CFG_VARIANTS")
         else:

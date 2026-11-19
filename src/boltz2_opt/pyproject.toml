@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 # boltz2_opt — the Boltz-2 optimization kit's package: modes exact / fast / big on the persistent worker, the stock caller (off), the activation report.
 # Install editable with the core: `run.sh install` (= `pip install -e common/opt_core -e boltz2/opt`). The kit code it wraps lives beside the package (forward/)
 # and is resolved from the package location (or from $MODEL_OPT, the boltz2/ directory), so the install must stay editable. No install-time
@@ -13,7 +16,7 @@ backend-path = ["."]
 name = "boltz2_opt"
 dynamic = ["version"]
 description = "Boltz-2 inference optimizations: modes exact/fast/big on the persistent-worker route, boltz predict's own options, stock caller (off), activation report"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = ["Private :: Do Not Upload"]
 dependencies = []
 

@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.ditexact — the engine adapter of the DITEXACT levers (``opt/forward/ditexact/src/dx_token.py``) onto the diffusion module's TOKEN
 transformer (``DiffusionModule.token_transformer``: boltz.model.modules.diffusionv2 / transformersv2, 24 DiffusionTransformerLayers, fp32,
 autocast off).  Attached by ``boltz2_opt.worker_launch --attach ditexact`` right after ``boltz.model.modules.diffusionv2`` imports: it wraps
@@ -84,6 +87,16 @@ def _dx():
         import dx_token                                   # noqa: E402
         if os.path.dirname(os.path.realpath(dx_token.__file__)) != os.path.realpath(KIT_SRC):
             raise RuntimeError(f"dx_token imported from {dx_token.__file__}, not the kit tree {KIT_SRC}")
+        import torch
+        from boltz.upstream.blackwell import admits_exact_cell
+        if torch.cuda.is_available() and admits_exact_cell(
+            dx_token, "dit", torch.cuda.get_device_capability(0),
+            torch.__version__, torch.version.cuda,
+        ):
+            dx_token.PROVEN_CC = {
+                word: capabilities | {(12, 0)}
+                for word, capabilities in dx_token.PROVEN_CC.items()
+            }
         _STATE["module"] = dx_token
     return _STATE["module"]
 

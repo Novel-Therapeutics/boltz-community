@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.pairblock — the engine adapter of the core's fused triangle-attention block (``opt_core.attn.pair_fused``: LayerNorm -> one
 q|k|v|g|pair-bias prologue kernel -> attention core -> one sigmoid-gate * o @ W_o epilogue kernel) onto Boltz-2's ``TriangleAttention``
 (``boltz.model.layers.triangular_attention.attention``; the starting- and ending-node classes of every Pairformer stack: trunk, MSA-module
@@ -308,6 +311,8 @@ def apply(spec: Optional[str] = None) -> List[str]:
     L = PF.ledger(NAME, expected=EXPECTED, min_tokens=0)          # no kit token gate: the named core serves every token count (its own table decides per card and N)
     rule_v = "cueq" if (cw is not None and cw.split("@")[0] in EXACT_CORE_WORDS) else v   # an exact-class core word is the `cueq` construction around another bitwise core: the card's `cueq` row rule is its rule
     rng = RF.range_for(CARD_ROWS, rule_v, RF.card_cc())             # this card's served row rule for the variant (None = no rule: nothing below changes, the line is unchanged)
+    stock_bias = rule_v == "cueq" and RF.card_cc() == "12.0"
+    _STATE["bias_projection"] = "torch_linear" if stock_bias else "provider"
     _STATE["rows"] = rng
     for k_, n_ in RF.facts(rng).items():
         L.set(k_, n_)                                                # named on the lever's line (min_rows=<n> max_rows=<n> piece_rows=<n>) and in the report, only on a card that has one
@@ -356,6 +361,9 @@ def apply(spec: Optional[str] = None) -> List[str]:
                     x_ln = XLN.ln_to_bf16(self.layer_norm, x.transpose(-2, -3) if ending else x)   # = self.layer_norm(.).to(torch.bfloat16): the stock statement unless the exactln lever is on, which fuses the cast into its bitwise LayerNorm replica's store [EXACTLN]
                     if not x_ln.is_contiguous():
                         x_ln = x_ln.contiguous()
+                if stock_bias:
+                    from boltz.upstream.blackwell import stock_triangle_bias_core
+                    core_arg = stock_triangle_bias_core(self, x_ln, core_arg)
                 u = PF.tri_attn_block(x, W, mask=mask, ending=ending, residual=False, impl=IMPL, core=core_arg, ln=ln, x_ln=x_ln, scale=1.0 / math.sqrt(self.mha.c_hidden))
         except PF.Unsupported as e:
             refused = _reason(e.reason)
@@ -394,7 +402,7 @@ def line() -> Optional[str]:
         return None
     from opt_core.attn import pair_fused as PF
     return PF.emit_line(L, TAG, variant=_STATE["variant"], impl=IMPL, ln=LN_OF.get(_STATE["variant"] or "", "stock"), pf_cores=pf_cores_word(), kit_served=",".join(f"{k}:{n}" for k, n in sorted(_STATE["served_by"].items())) or "-",   # kit_served=: this adapter's per-stack tally — `cores=` is the CORE's own head token (opt_core >= 0.5.98: the block's served attention cores), never passed by the kit
-                        core_cells=";".join(f"{k}={str(t).replace(' ', '_')}" for k, t in sorted(_STATE["core_cells"].items())) or "-", c64=int(KEY_C64 in (_STATE.get("keys") or [])))
+                        core_cells=";".join(f"{k}={str(t).replace(' ', '_')}" for k, t in sorted(_STATE["core_cells"].items())) or "-", c64=int(KEY_C64 in (_STATE.get("keys") or [])), bias_projection=_STATE.get("bias_projection", "provider"))
 
 
 IDLE = "idle: every triangle-attention call of the run took a declared stock path (kernels off) — the block is installed and served nothing"

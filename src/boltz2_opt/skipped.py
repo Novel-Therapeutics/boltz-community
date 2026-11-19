@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """Inputs the stock parser skips — one accounting, one line family, both routes.
 
 Boltz 2.2.1's ``process_inputs`` parses each YAML inside a try/except (boltz/main.py ``process_input``): an input it cannot parse — e.g. a

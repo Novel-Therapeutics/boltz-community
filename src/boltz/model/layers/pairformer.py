@@ -15,7 +15,6 @@ from boltz.model.layers.triangular_mult import (
     TriangleMultiplicationIncoming,
     TriangleMultiplicationOutgoing,
 )
-from boltz.model.modules.utils import autocast_device_type
 
 
 class PairformerLayer(nn.Module):
@@ -111,7 +110,7 @@ class PairformerLayer(nn.Module):
             s = s + self.transition_s(s)
             s = self.s_post_norm(s)
         else:
-            with torch.autocast(autocast_device_type(s.device.type), enabled=False):
+            with torch.autocast(s.device.type, enabled=False):
                 s_normed = self.pre_norm_s(s.float())
                 s = s.float() + self.attention(
                     s=s_normed, z=z.float(), mask=mask.float(), k_in=s_normed

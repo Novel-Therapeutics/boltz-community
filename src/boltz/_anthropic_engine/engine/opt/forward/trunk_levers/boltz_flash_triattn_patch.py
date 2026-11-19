@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """
 boltz_flash_triattn_patch.py -- runtime patch for Boltz-2 (boltz 2.2.1): route TriangleAttention (starting + ending node; trunk pairformer,
 MSA-module pair stack, template pairformer, confidence pairformer -- they all use the same class) to the Triton flash triangle-attention
@@ -90,12 +93,9 @@ def _import_flash():
 
 
 def _autocast_dtype() -> Optional[torch.dtype]:
-    if not torch.is_autocast_enabled():
+    if not torch.is_autocast_enabled("cuda"):
         return None
-    try:
-        return torch.get_autocast_dtype("cuda")
-    except Exception:  # older torch
-        return torch.get_autocast_gpu_dtype()
+    return torch.get_autocast_dtype("cuda")
 
 
 def label_modules(model: torch.nn.Module) -> int:

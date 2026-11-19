@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz2_opt.rowpair_heads — seams 16-19 of the tensor-parallel line (``boltz2_opt.rowpair``, ``--n_gpu P > 1``): the three heads that read
 the trunk pair tensor — the diffusion conditioning, the diffusion sampler's token transformer and the confidence module — run on this rank's
 ROWS of it (``rowpair.TrunkShard``: ``z_loc [1, R, N, 128]``, rows ``[lay.r0, lay.r1)``); no ``N x N x c`` tensor is built on a rank. The
@@ -91,12 +94,8 @@ class _Ambient:
     def __init__(self, device):
         import torch
         self.device_type = "cuda" if getattr(device, "type", str(device)) == "cuda" else "cpu"
-        try:
-            self.enabled = bool(torch.is_autocast_enabled(self.device_type))
-            self.dtype = torch.get_autocast_dtype(self.device_type)
-        except TypeError:                                                 # torch < 2.4 spelling
-            self.enabled = bool(torch.is_autocast_enabled() if self.device_type == "cuda" else torch.is_autocast_cpu_enabled())
-            self.dtype = torch.get_autocast_gpu_dtype() if self.device_type == "cuda" else torch.get_autocast_cpu_dtype()
+        self.enabled = torch.is_autocast_enabled(self.device_type)
+        self.dtype = torch.get_autocast_dtype(self.device_type)
 
     def enter(self):
         import torch

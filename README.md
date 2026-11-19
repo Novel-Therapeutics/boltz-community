@@ -11,8 +11,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Dependency pins relaxed from `==` to `>=`
 - `fairscale` dependency removed — replaced with PyTorch built-in `torch.utils.checkpoint`
 - `numpy<2.0` cap removed
-- `requires-python` widened to `>=3.10` (removed `<3.13` cap)
-- Requires PyTorch 2.4 or newer; CI tests the 2.4 minimum alongside the latest release. Compatible with Lightning 2.6+
+- Requires Python 3.11+ and PyTorch 2.10+. CPU CI tests Python 3.11 with PyTorch 2.10.0 and Python 3.14 with PyTorch 2.10.0 and 2.15.0. Compatible with Lightning 2.6+
 
 **Bug fixes:**
 - Fixed PDB `CONECT` serials when atoms are missing and `TER` records for noncontiguous chain IDs ([#40](https://github.com/Novel-Therapeutics/boltz-community/pull/40))
@@ -90,6 +89,8 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Added structure checks to Boltz-2's `confidence_*.json`: inverted or flattened stereocentres and out-of-range bonds per model. Affinity uses the best sample that passes ([#29](https://github.com/Novel-Therapeutics/boltz-community/pull/29))
 
 **Performance improvements:**
+- Packaged Anthropic's complete Boltz-2 optimization engine as the opt-in `boltz2-opt` command, including its `off`, `exact`, `fast` and `big` profiles. The shared `opt_core` provider is installed separately ([#37](https://github.com/Novel-Therapeutics/boltz-community/pull/37), [setup and behavior](docs/upstream-compatibility.md)).
+- Qualified the experimental engine on RTX PRO 6000 Blackwell: fixed kernel admission and fused OPM shared-memory failures, and restored bitwise `exact`/`off` equality across all 39 output tensors for guided and unguided 636-token 8QLV seed 0 predictions on the recorded PyTorch 2.12.0+cu130 stack. `fast` and `big` retain their numerical and accuracy tradeoffs ([#48](https://github.com/Novel-Therapeutics/boltz-community/pull/48), [evidence](docs/upstream-compatibility.md#exact-output-equality-repair)).
 - Reused activation casts and mask counts in Boltz-2 MSA inference, and released chunked OPM buffers earlier. Initial A10G layer benchmarks saved 13–50%; whole-prediction gain is unmeasured ([#34](https://github.com/Novel-Therapeutics/boltz-community/pull/34), [details](docs/msa-inference.md))
 - Added opt-in denoiser conditioning reuse: `BOLTZ_DENOISER_CACHE=on` (off by default). A10G predictions took 0.19–0.65% less time with identical outputs and scores ([#35](https://github.com/Novel-Therapeutics/boltz-community/pull/35), [details](docs/denoiser-cache.md))
 - Added Anthropic's FlashPairformer triangle kernels for Boltz-2 CUDA bf16 inference when `opt_core` is installed, with cuEquivariance/PyTorch fallbacks ([#33](https://github.com/Novel-Therapeutics/boltz-community/pull/33), [setup](#flashpairformer-kernels), thanks to [@MichalMalyska](https://github.com/MichalMalyska))
@@ -102,7 +103,7 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - `process_atom_features` pre-allocates its arrays and fills `atom_to_token` per token, not per atom ([ba3f6cf](https://github.com/Novel-Therapeutics/boltz-community/commit/ba3f6cf))
 
 **Tests & CI:**
-- 538 test cases: unit, end-to-end smoke, golden-output regression (Boltz-1 and Boltz-2), determinism and CUDA kernel/cache parity
+- The validated code snapshot passes 754 CPU tests and 9 subtests in each of three Python/PyTorch combinations, plus 11 T4 smoke and regression tests ([CPU CI](https://github.com/Novel-Therapeutics/boltz-community/actions/runs/44400101774), [GPU CI](https://github.com/Novel-Therapeutics/boltz-community/actions/runs/44400101885)). These jobs cover native inference; the separately recorded Blackwell checks cover the experimental engine's pinned stack.
 - GitHub Actions CI with CPU runners (every push/PR) and GPU T4 runners (push to main)
 
 ## Contributors
@@ -111,6 +112,8 @@ boltz-community builds on [Boltz](https://github.com/jwohlwend/boltz) by Jeremy 
 
 Thanks to everyone whose code, upstream PRs or reports are in this fork:
 
+- [Anthropic](https://github.com/anthropics/uplifting-biomolecular-modeling) and the upstream optimization-kit contributors: the original Boltz-2 optimization engine, FlashPairformer kernels and shared `opt_core` provider, released under Apache-2.0. Their copyright, licensing and third-party notices are preserved with the packaged engine.
+- [Richard Shuai (@richardshuai-ant)](https://github.com/richardshuai-ant): [initial public release](https://github.com/anthropics/uplifting-biomolecular-modeling/commit/f4f62fa6592ae4938d49b1757bea0cfeff9f468e) of Anthropic's model-optimization kits.
 - [@UniversalBasicInc](https://github.com/UniversalBasicInc): Intel GPU support
 - [@corinwagen](https://github.com/corinwagen): CPU checkpoint staging
 - [@fnachon](https://github.com/fnachon): macOS libomp fix
@@ -130,6 +133,11 @@ Thanks to everyone whose code, upstream PRs or reports are in this fork:
 Pull requests are welcome! If you have a bug fix, test improvement, or compatibility enhancement, please open a PR.
 
 ## Installation
+
+Use Python 3.11 or newer and PyTorch 2.10 or newer in a fresh environment.
+Compiled dependency minimums include Python 3.14 wheels. PyTorch's macOS
+wheels for these runtimes target Apple Silicon. On Intel macOS, use a Linux
+CPU environment or container.
 
 Install from PyPI:
 
@@ -151,9 +159,33 @@ uv add boltz-community            # or: uv add "boltz-community[cuda]"
 
 If you are installing on CPU-only or non-CUDA GPU hardware, omit `[cuda]`. Note that the CPU version is significantly slower than the GPU version.
 
+The `[cuda]` extra installs the CUDA 13 cuEquivariance packages, whose
+PyTorch adapter requires PyTorch 2.11 or newer. GPU CI targets PyTorch 2.15
+with CUDA 13.2, which requires a compatible driver and a Turing (sm_75) or
+newer GPU. CPU, Apple Silicon and Intel GPU installations use their respective
+PyTorch builds. The experimental engine has additional requirements.
+
 ### Experimental Anthropic engine
 
-Use the opt-in `boltz2-opt` command for Anthropic’s original Boltz-2 optimization profiles. See [installation, profiles, and validation](docs/upstream-compatibility.md).
+The distribution includes Anthropic's original Boltz-2 engine and its reference
+numerical source, with community packaging and Blackwell adaptations. Install
+the separately distributed `opt_core` provider as described below. Select the
+engine explicitly through `boltz2-opt`; normal `boltz predict` uses the community
+inference path.
+
+```sh
+boltz2-opt check --mode exact --json
+boltz2-opt pred --mode exact --input complex.yaml --out_dir output_exact --seed 0
+```
+
+Use a fresh output directory. The engine preserves the upstream profiles'
+precision, input processing and runtime gates; its `off` baseline also uses the
+original numerical path. Its `fast` and `big` profiles change numerical results
+and can reduce accuracy on individual targets. The Blackwell bitwise results
+above apply to the recorded PyTorch 2.12.0+cu130 stack, not every currently
+installable dependency combination. Optimized profiles have not been qualified
+on PyTorch 2.15. See [runtime requirements, behavioral differences and validation](docs/upstream-compatibility.md)
+before choosing a profile for a scientific run.
 
 ### FlashPairformer kernels
 
@@ -237,8 +269,8 @@ Releases are tag-driven. Pushing a `v*.*.*` tag triggers [.github/workflows/rele
 
 ### One-time setup (PyPI side)
 
-1. Register the `boltz-community` package on PyPI (create as a new project; the name is currently available).
-2. Open the project's *Publishing* settings and add a Trusted Publisher with:
+1. The [`boltz-community` project](https://pypi.org/project/boltz-community/) already exists. Maintainers only need to verify its publishing configuration when setting up or changing credentials.
+2. Open the project's *Publishing* settings and verify a Trusted Publisher with:
    - **Owner:** `Novel-Therapeutics`
    - **Repository:** `boltz-community`
    - **Workflow filename:** `release.yml`
@@ -249,7 +281,7 @@ Releases are tag-driven. Pushing a `v*.*.*` tag triggers [.github/workflows/rele
 
 1. Land all changes on `main`.
 2. Bump `version` in [pyproject.toml](pyproject.toml).
-3. Add a bullet under *Bug fixes* / *Improvements* / *Performance improvements* in this README. Update the test count if new tests landed.
+3. Refresh the reviewed engine contract with `python3 scripts/update_upstream_contract.py`, then add release changes and verified contributor credits to this README. Build the sdist and wheel, run `twine check`, and verify both carry the engine assets, licenses, notices and autoload hook. Confirm CPU and GPU CI on the release commit.
 4. Commit as `Release X.Y.Z` and push `main`.
 5. Tag the release commit: `git tag -a vX.Y.Z -m "Release X.Y.Z" && git push origin vX.Y.Z`.
 6. The release workflow builds, checks, and publishes the artifacts to PyPI. Watch the run under the *Actions* tab.
@@ -282,7 +314,7 @@ PyPI rejects re-uploading the same version. If the build succeeded but the publi
 
 Boltz is a family of models for biomolecular interaction prediction. Boltz-1 was the first fully open source model to approach AlphaFold3 accuracy. Our latest work Boltz-2 is a new biomolecular foundation model that goes beyond AlphaFold3 and Boltz-1 by jointly modeling complex structures and binding affinities, a critical component towards accurate molecular design. Boltz-2 is the first deep learning model to approach the accuracy of physics-based free-energy perturbation (FEP) methods, while running 1000x faster — making accurate in silico screening practical for early-stage drug discovery.
 
-All the code and weights are provided under MIT license, making them freely available for both academic and commercial uses. For more information about the model, see the [Boltz-1](https://doi.org/10.1101/2024.11.19.624167) and [Boltz-2](https://doi.org/10.1101/2025.06.14.659707) technical reports. To discuss updates, tools and applications join our [Slack channel](https://boltz.bio/join-slack).
+The original Boltz code and weights are provided under MIT license. This community distribution also includes Anthropic's Apache-2.0 optimization engine and third-party components under their own licenses; see [License](#license). For more information about the model, see the [Boltz-1](https://doi.org/10.1101/2024.11.19.624167) and [Boltz-2](https://doi.org/10.1101/2025.06.14.659707) technical reports. To discuss updates, tools and applications join our [Slack channel](https://boltz.bio/join-slack).
 
 ## Inference
 
@@ -317,7 +349,13 @@ On recent NVIDIA GPUs, Boltz leverages the acceleration provided by [NVIDIA  cuE
 
 ## License
 
-Our model and code are released under MIT License, and can be freely used for both academic and commercial purposes.
+The Boltz model, weights and community code are available under the [MIT License](LICENSE).
+The packaged Anthropic engine is licensed under [Apache-2.0](src/boltz/_anthropic_engine/engine/LICENSE),
+with its [copyright and attribution notice](src/boltz/_anthropic_engine/engine/NOTICE)
+and [third-party notices](src/boltz/_anthropic_engine/engine/THIRD_PARTY_NOTICES.md)
+and license texts included in source and built distributions. Bundled third-party
+components retain their own licenses. Both the MIT and Apache-2.0 components
+permit academic and commercial use under their respective terms.
 
 
 ## Cite

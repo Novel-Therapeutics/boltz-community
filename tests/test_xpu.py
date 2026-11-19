@@ -89,14 +89,11 @@ def _find_files(pred_dir, extension):
 
 @pytest.mark.xpu
 @pytest.mark.skipif(not xpu_available(), reason="XPU not available")
-def test_autocast_device_type_xpu():
-    """autocast_device_type keeps "xpu", so the fp32 guards actually disable XPU autocast."""
-    from boltz.model.modules.utils import autocast_device_type
-
-    assert autocast_device_type("xpu") == "xpu"
+def test_autocast_can_be_disabled_xpu():
+    """The fp32 guards disable XPU autocast on the actual device."""
     x = torch.ones(8, 8, device="xpu")
     with torch.autocast("xpu", dtype=torch.bfloat16):
-        with torch.autocast(autocast_device_type("xpu"), enabled=False):
+        with torch.autocast("xpu", enabled=False):
             assert (x @ x).dtype == torch.float32
 
 

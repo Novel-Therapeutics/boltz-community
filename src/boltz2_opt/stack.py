@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """Where the kits are, whether this box can run a mode, and how the mode's worker is launched — the package's one place for all three.
 
 Kit locations (opt/-relative, ``modes.py``): the package finds ``boltz2/opt/`` from its own location or from ``$MODEL_OPT`` (the ``boltz2/``

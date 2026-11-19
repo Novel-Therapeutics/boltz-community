@@ -35,14 +35,6 @@ def permute_final_dims(tensor: torch.Tensor, inds: List[int]):
     return tensor.permute(first_inds + [zero_index + i for i in inds])
 
 
-def is_fp16_enabled():
-    # Autocast world
-    fp16_enabled = torch.get_autocast_gpu_dtype() == torch.float16
-    fp16_enabled = fp16_enabled and torch.is_autocast_enabled()
-
-    return fp16_enabled
-
-
 # With tree_map, a poor man's JAX tree_map
 def dict_map(fn, dic, leaf_type):
     new_dict = {}

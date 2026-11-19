@@ -1,15 +1,24 @@
 [build-system]
-requires = ["setuptools >= 64.0", "wheel"]
+requires = ["setuptools >= 77.0", "wheel"]
 build-backend = "_build_backend"
 backend-path = ["."]
 
 [project]
 name = "boltz-community"
-version = "2.14.0"
-requires-python = ">=3.10"
+version = "2.15.0"
+requires-python = ">=3.11"
 description = "Community-maintained fork of Boltz with bug fixes, broader compatibility, and CI"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT AND Apache-2.0 AND BSD-3-Clause"
+license-files = [
+    "LICENSE",
+    "src/boltz/_anthropic_engine/engine/LICENSE",
+    "src/boltz/_anthropic_engine/engine/NOTICE",
+    "src/boltz/_anthropic_engine/engine/THIRD_PARTY_NOTICES.md",
+    "src/boltz/_anthropic_engine/engine/third_party_licenses/*.txt",
+    "src/boltz/_anthropic_engine/engine/opt/forward/*/LICENSE",
+    "src/boltz/_anthropic_engine/engine/opt/forward/*/NOTICE*",
+]
 authors = [
     { name = "Jeremy Wohlwend" },
     { name = "Gabriele Corso" },
@@ -30,39 +39,38 @@ keywords = [
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    # 2.4 is the oldest PyTorch the code supports (torch.amp.autocast_mode.
-    # is_autocast_available); CI tests it in the "CPU tests (minimum PyTorch)" job.
-    "torch>=2.4",
-    "numpy>=1.26",
-    "hydra-core>=1.3.2",
-    "pytorch-lightning>=2.5.0",
-    "rdkit>=2024.3.2",
-    "dm-tree>=0.1.8",
+    # PyTorch 2.10 added torch.compile support on Python 3.14.
+    "torch>=2.10",
+    "numpy>=2.3.2",
+    "hydra-core>=1.3.8",
+    "pytorch-lightning>=2.6.0",
+    "rdkit>=2025.3.4",
+    "dm-tree>=0.1.10",
     "requests>=2.32.3",
-    "pandas>=2.2.2",
+    "pandas>=2.3.3",
     "types-requests",
     "einops>=0.8.0",
     "einx>=0.3.0",
-    "mashumaro>=3.14",
+    "mashumaro>=3.17",
     "modelcif>=1.2",
     "wandb>=0.18.7",
     "click>=8.1.7",
     "pyyaml>=6.0.2",
-    "biopython>=1.84",
-    "scipy>=1.13.1",
-    "numba>=0.61.0",
-    "gemmi>=0.6.5",
-    "scikit-learn>=1.6.1",
+    "biopython>=1.86",
+    "scipy>=1.16.1",
+    "numba>=0.63.0",
+    "gemmi>=0.7.4",
+    "scikit-learn>=1.7.2",
     "chembl_structure_pipeline>=1.2.2",
 ]
 
@@ -80,19 +88,18 @@ boltz-fix-macos-libomp = "boltz.scripts.fix_macos_libomp:main"
 
 [project.optional-dependencies]
 lint = ["ruff"]
-# gemmi>=0.7.4 adds gemmi.read_structure_string, used only by the mmCIF writer
-# tests. The runtime floor above stays at >=0.6.5 because src/ never calls it.
-test = ["pytest", "requests", "gemmi>=0.7.4"]
+# Preprocessing metadata tests import the Redis and parallel-map adapters.
+test = ["pytest", "requests", "redis", "p_tqdm"]
 cuda = [
-    "cuequivariance_ops_cu12>=0.5.0",
-    "cuequivariance_ops_torch_cu12>=0.5.0",
-    "cuequivariance_torch>=0.5.0",
+    "cuequivariance_ops_cu13>=0.13.0",
+    "cuequivariance_ops_torch_cu13>=0.13.0",
+    "cuequivariance_torch>=0.13.0",
 ]
 
 [tool.ruff]
 src = ["src"]
 extend-exclude = ["conf.py"]
-target-version = "py39"
+target-version = "py311"
 lint.select = ["ALL"]
 lint.ignore = [
     "COM812",  # Conflicts with the formatter

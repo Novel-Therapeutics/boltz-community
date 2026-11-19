@@ -9,47 +9,41 @@ on:
 
 jobs:
   cpu-tests:
-    name: CPU tests
+    name: CPU tests (Python ${{ matrix.python }}, PyTorch ${{ matrix.torch }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: pip install -e ".[test]"
-
-      - name: Run CPU tests
-        run: pytest -m "not slow and not regression" -v --tb=short
-
-  cpu-tests-min-torch:
-    # Keeps the declared floor honest: pyproject.toml says torch>=2.4, so run the
-    # same suite on exactly that version. Keep this in step with pyproject.toml.
-    name: CPU tests (minimum PyTorch)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.14"
+            torch: "2.15.0"
+          - python: "3.14"
+            torch: "2.10.0"
+          # Exercise the Python and PyTorch minimums together.
+          - python: "3.11"
+            torch: "2.10.0"
     env:
-      MIN_TORCH: "2.4.1"
+      PYTHON_VERSION: ${{ matrix.python }}
+      TORCH_VERSION: ${{ matrix.torch }}
 
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python }}
 
-      - name: Install minimum supported PyTorch (CPU build)
-        run: pip install "torch==${MIN_TORCH}" --index-url https://download.pytorch.org/whl/cpu
+      - name: Install PyTorch CPU build
+        run: python -m pip install "torch==${TORCH_VERSION}" --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install dependencies
-        run: pip install -e ".[test]"
+        run: python -m pip install -e ".[test]"
 
-      - name: Confirm the minimum PyTorch was not upgraded
-        run: python -c "import os, torch; v = torch.__version__.split('+')[0]; print('torch', v); assert v == os.environ['MIN_TORCH'], v"
+      - name: Check runtime and dependencies
+        run: |
+          python -c "import os, sys, torch; print(sys.version); print('torch', torch.__version__); assert '.'.join(map(str, sys.version_info[:2])) == os.environ['PYTHON_VERSION']; assert torch.__version__.split('+')[0] == os.environ['TORCH_VERSION']"
+          python -m pip check
 
       - name: Run CPU tests
-        run: pytest -m "not slow and not regression" -v --tb=short
+        run: python -m pytest -m "not slow and not regression and not cuda and not mps and not xpu" -v --tb=short

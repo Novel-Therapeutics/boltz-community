@@ -1,3 +1,6 @@
+# Modified by boltz-community for packaged engine and runtime compatibility.
+# Changes are recorded in boltz/upstream/contract.json and docs/upstream-compatibility.md.
+# Original Anthropic code is Apache-2.0; bundled LICENSE/NOTICE and third-party notices apply.
 """boltz_waste_levers.py -- EXACT levers for the Boltz-2 2.2.1 MSA module's stock chunked inference paths (runtime monkeypatches,
 inference only; the boltz wheel is untouched; default OFF = nothing patched = stock bytes).
 
@@ -93,10 +96,7 @@ def _requested(environ=None) -> Tuple[str, ...]:
 
 def _bf16_autocast() -> bool:
     """True inside a CUDA autocast region whose dtype is bf16 (the trunk's `torch.autocast("cuda", dtype=torch.bfloat16)`)."""
-    try:
-        return torch.is_autocast_enabled("cuda") and torch.get_autocast_dtype("cuda") == torch.bfloat16      # torch >= 2.4
-    except TypeError:
-        return torch.is_autocast_enabled() and torch.get_autocast_gpu_dtype() == torch.bfloat16              # older torch
+    return torch.is_autocast_enabled("cuda") and torch.get_autocast_dtype("cuda") == torch.bfloat16
 
 
 def _q(x: torch.Tensor) -> torch.Tensor:
