@@ -13,7 +13,6 @@ class OuterProductMeanTest(unittest.TestCase):
         self.c_hidden = 32
         self.no_heads = 1
 
-        torch.set_grad_enabled(False)
         pytorch_lightning.seed_everything(1100)
         self.layer = TriangleAttention(self.c_in, self.c_hidden, self.no_heads)
 
