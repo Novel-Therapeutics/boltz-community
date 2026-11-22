@@ -14,6 +14,8 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - Requires Python 3.11+ and PyTorch 2.10+. CPU CI tests Python 3.11 with PyTorch 2.10.0 and Python 3.14 with PyTorch 2.10.0 and 2.15.0. Compatible with Lightning 2.6+
 
 **Bug fixes:**
+- Fixed identical-sequence chains losing distinct modifications or cyclic settings, including MSA generation and mmCIF output ([#51](https://github.com/Novel-Therapeutics/boltz-community/pull/51), adapted from upstream [#728](https://github.com/jwohlwend/boltz/pull/728))
+- Fixed Boltz-1 training configurations pointing to a nonexistent model module ([#50](https://github.com/Novel-Therapeutics/boltz-community/pull/50), upstream [#726](https://github.com/jwohlwend/boltz/pull/726))
 - Fixed PDB `CONECT` serials when atoms are missing and `TER` records for noncontiguous chain IDs ([#40](https://github.com/Novel-Therapeutics/boltz-community/pull/40))
 - Fixed inconsistent subchain IDs across models in PDB templates ([#42](https://github.com/Novel-Therapeutics/boltz-community/pull/42))
 - Corrected symmetric-chain center-of-mass energies and gradients ([#43](https://github.com/Novel-Therapeutics/boltz-community/pull/43))
@@ -103,7 +105,8 @@ Community-maintained fork of [Boltz](https://github.com/jwohlwend/boltz) with bu
 - `process_atom_features` pre-allocates its arrays and fills `atom_to_token` per token, not per atom ([ba3f6cf](https://github.com/Novel-Therapeutics/boltz-community/commit/ba3f6cf))
 
 **Tests & CI:**
-- The validated code snapshot passes 754 CPU tests and 9 subtests in each of three Python/PyTorch combinations, plus 11 T4 smoke and regression tests ([CPU CI](https://github.com/Novel-Therapeutics/boltz-community/actions/runs/44400101774), [GPU CI](https://github.com/Novel-Therapeutics/boltz-community/actions/runs/44400101885)). These jobs cover native inference; the separately recorded Blackwell checks cover the experimental engine's pinned stack.
+- Fixed layer test fixtures leaking PyTorch gradient state into later tests ([#45](https://github.com/Novel-Therapeutics/boltz-community/pull/45))
+- The validated code snapshot passes 846 CPU tests and 9 subtests in each of three Python/PyTorch combinations, plus 11 T4 smoke and regression tests ([CPU CI](https://github.com/Novel-Therapeutics/boltz-community/actions/runs/44984830835), [GPU CI](https://github.com/Novel-Therapeutics/boltz-community/actions/runs/44984830842)). These jobs cover native inference; the separately recorded Blackwell checks cover the experimental engine's pinned stack.
 - GitHub Actions CI with CPU runners (every push/PR) and GPU T4 runners (push to main)
 
 ## Contributors
@@ -112,6 +115,7 @@ boltz-community builds on [Boltz](https://github.com/jwohlwend/boltz) by Jeremy 
 
 Thanks to everyone whose code, upstream PRs or reports are in this fork:
 
+- [@SaifSyed08](https://github.com/SaifSyed08): chain modification/cyclic grouping and training configuration targets
 - [Anthropic](https://github.com/anthropics/uplifting-biomolecular-modeling) and the upstream optimization-kit contributors: the original Boltz-2 optimization engine, FlashPairformer kernels and shared `opt_core` provider, released under Apache-2.0. Their copyright, licensing and third-party notices are preserved with the packaged engine.
 - [Richard Shuai (@richardshuai-ant)](https://github.com/richardshuai-ant): [initial public release](https://github.com/anthropics/uplifting-biomolecular-modeling/commit/f4f62fa6592ae4938d49b1757bea0cfeff9f468e) of Anthropic's model-optimization kits.
 - [@UniversalBasicInc](https://github.com/UniversalBasicInc): Intel GPU support

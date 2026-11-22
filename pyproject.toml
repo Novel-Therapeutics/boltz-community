@@ -5,7 +5,7 @@ backend-path = ["."]
 
 [project]
 name = "boltz-community"
-version = "2.15.0"
+version = "2.15.1"
 requires-python = ">=3.11"
 description = "Community-maintained fork of Boltz with bug fixes, broader compatibility, and CI"
 readme = "README.md"
