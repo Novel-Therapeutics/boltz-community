@@ -196,7 +196,7 @@
     "data/module/trainingv2.py": "ffb6fd31d7adc79ca091fef0bfc98c1e558bb4e91e1686e6dc1ec195351f142c",
     "data/mol.py": "33e6366b7824d388eca2bd02403af31876053aec272709e70aaefd24db063a8d",
     "data/msa/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "data/msa/mmseqs2.py": "2a8212991a4cfce48791b278bb6df4e2022c2a8c0810471c56a17e38135319a6",
+    "data/msa/mmseqs2.py": "99bf63ae7dbf1c283e0301c943f9e86490d02459efbe7d9b135b37a3a74bae0c",
     "data/pad.py": "3b808638e7394f016eb9678fee12a330822c96375f2e3f9526d5d07955c5c7cb",
     "data/parse/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "data/parse/a3m.py": "f1e9b0b60e12ff17aa5cdf95a4ba2f1cfbaa7551f134f4e06ffab414752f7380",

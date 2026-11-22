@@ -92,7 +92,10 @@ Within the explicitly selected engine process:
 - Original CSV/A3M parsing and MSA pairing are restored. This bypasses the
   fork's paired-duplicate retention, pairing bookkeeping correction, UniRef
   pairing-key behavior and query-trimming fallback. These change model inputs;
-  preserving them would change the tensors the engine receives. The engine uses the
+  preserving them would change the tensors the engine receives. The shared input
+  pipeline preserves per-chain modifications and cyclic settings; automatic MSA
+  generation requests pairing only for distinct protein sequences, including when
+  chemistry splits one sequence into multiple entities. The engine uses the
   fork's multi-model template parsing and PDB connectivity and termination fixes.
   Its confidence JSON includes original input chain labels and structure checks.
   The single-GPU head also supplies the fork's extra PAE summaries, including
