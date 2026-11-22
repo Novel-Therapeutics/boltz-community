@@ -218,7 +218,7 @@
     "data/tokenize/tokenizer.py": "f689243bcf40d51bd0779b5c5bd54b20a6424afbd400ba2ccb68ad74dd660c81",
     "data/types.py": "f149f04934c793f8d77434d8aef126d6261acac6bc03104e493028cfcdcb44f6",
     "data/write/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "data/write/mmcif.py": "dfdc9c02ce36b032b5405fea829fdcf3ba70a12cb0781d08758a6e9cbafb754b",
+    "data/write/mmcif.py": "ad607fb1e87d1ae3585cda74b874920b3ca4b16e1e67c35873a5ed39ece7e54b",
     "data/write/pdb.py": "bf7f59ca039609db870048eb6f6ab3e99112a4680fc3d9592cedf7ac17f0e8d2",
     "data/write/utils.py": "d8fcef78ce2a67b01a76bbb5433a22d83862b7fb382d7973e1c797a46262e32d",
     "data/write/writer.py": "33e9c462e8f943830f2bc9a0f01ba8c08a50124dff3ebfbfd9a4035638e027ec",

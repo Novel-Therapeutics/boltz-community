@@ -101,7 +101,7 @@ class TestToMmcif:
 
 
 class TestMmcifEntityMapping:
-    """mmCIF writer must create separate Entity objects per entity_id."""
+    """Output entities follow chemical equivalence while chains retain identity."""
 
     @staticmethod
     def _make_two_ligand_structure(same_entity=False):
@@ -159,7 +159,7 @@ class TestMmcifEntityMapping:
     def test_different_entities_produce_distinct_records(self):
         """Two NONPOLYMER chains with different entity_ids map to separate entities."""
         structure = self._make_two_ligand_structure(same_entity=False)
-        # Different residue names so ihm library doesn't reject as duplicates
+        # Different chemical components require distinct output entities.
         structure.residues[0]["name"] = "ATP"
         structure.residues[1]["name"] = "GTP"
 
@@ -179,6 +179,17 @@ class TestMmcifEntityMapping:
 
         assert "Model subunit A" in cif_str
         assert "Model subunit B" in cif_str
+
+    def test_equivalent_entities_share_serialization_without_mutating_ids(self):
+        """Distinct internal entities with equivalent components still serialize."""
+        from gemmi import cif
+
+        structure = self._make_two_ligand_structure(same_entity=False)
+        chains_before = structure.chains.copy()
+        block = cif.read_string(to_mmcif(structure, boltz2=True))[0]
+        assert list(block.find_values("_struct_asym.id")) == ["A", "B"]
+        assert len(set(block.find_values("_struct_asym.entity_id"))) == 1
+        np.testing.assert_array_equal(structure.chains, chains_before)
 
     def test_cross_residue_bonds_are_written_as_struct_conn(self):
         """Cross-residue covalent bonds should survive in mmCIF output."""
