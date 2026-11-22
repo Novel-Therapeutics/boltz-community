@@ -365,8 +365,11 @@ def to_mmcif(
         sequence = [str(res["name"]) for res in residues]
         sequences[entity] = sequence
 
-    # Create entity objects
+    # Serialization equivalence is narrower than internal entity identity (which
+    # also distinguishes raw sequences and cyclic settings). Reuse entities using
+    # IHM's own equality rules, while keeping every chain's AsymUnit and bonds.
     entities_map = {}
+    serialized_entities = {}
     for entity, sequence in sequences.items():
         mol_type = entity_to_moltype[entity]
 
@@ -391,6 +394,7 @@ def to_mmcif(
             for item in sequence
         ]
         model_e = Entity(seq)
+        model_e = serialized_entities.setdefault(model_e, model_e)
 
         for chain in entity_to_chains[entity]:
             chain_idx = chain["asym_id"]

@@ -679,3 +679,468 @@ class TestChainIdLength:
 
         with pytest.raises(ValueError, match="at most 5 characters"):
             parse_boltz_schema(Path("test.yaml"), self._schema(chain_id), ccd={}, boltz_2=True)
+
+
+class TestEntityChemistryGrouping:
+    """Entity reuse must preserve chemistry without weakening MSA consistency."""
+
+    @pytest.fixture(autouse=True)
+    def _residue_components(self, monkeypatch):
+        """Use tiny local CCD components through the production polymer parser."""
+        modified = _make_named_mol(
+            [("N", 7), ("CA", 6), ("C", 6), ("O", 8), ("P", 15)],
+            [
+                (0, 1, Chem.BondType.SINGLE),
+                (1, 2, Chem.BondType.SINGLE),
+                (2, 3, Chem.BondType.DOUBLE),
+                (1, 4, Chem.BondType.SINGLE),
+            ],
+        )
+
+        def get_mol(name, mols, mol_dir):
+            if name == "MOD":
+                return modified
+            return _mock_residue_mol(name, mols, mol_dir)
+
+        monkeypatch.setattr("boltz.data.parse.schema.get_mol", get_mol)
+
+    @staticmethod
+    def _parse(entries, tmp_path, boltz_2=True):
+        from boltz.data.parse.schema import parse_boltz_schema
+
+        return parse_boltz_schema(
+            tmp_path / "input.yaml", {"sequences": entries}, ccd={}, boltz_2=boltz_2
+        )
+
+    @staticmethod
+    def _residue_names(target, chain):
+        start = int(chain["res_idx"])
+        return list(target.structure.residues[start : start + chain["res_num"]]["name"])
+
+    @pytest.mark.parametrize("boltz_2", [False, True])
+    @pytest.mark.parametrize("reverse", [False, True])
+    @pytest.mark.parametrize(
+        "polymer,sequence,ordinary",
+        [
+            ("protein", "AS", ["ALA", "SER"]),
+            ("dna", "AC", ["DA", "DC"]),
+            ("rna", "AC", ["A", "C"]),
+        ],
+    )
+    def test_different_modifications_preserve_each_chain(
+        self, tmp_path, polymer, sequence, ordinary, reverse, boltz_2
+    ):
+        """Separate unmodified and modified polymers in either input order."""
+        entries = [
+            {polymer: {"id": "A", "sequence": sequence}},
+            {
+                polymer: {
+                    "id": ["B", "C"],
+                    "sequence": sequence,
+                    "modifications": [{"position": 2, "ccd": "MOD"}],
+                }
+            },
+        ]
+        target = self._parse(entries[::-1] if reverse else entries, tmp_path, boltz_2)
+        chains = {str(c["name"]): c for c in target.structure.chains}
+        assert self._residue_names(target, chains["A"]) == ordinary
+        for name in ("B", "C"):
+            assert self._residue_names(target, chains[name]) == [ordinary[0], "MOD"]
+            residue = target.structure.residues[int(chains[name]["res_idx"]) + 1]
+            atoms = target.structure.atoms[
+                int(residue["atom_idx"]) : int(
+                    residue["atom_idx"] + residue["atom_num"]
+                )
+            ]
+            assert 15 in atoms["element"]
+        from boltz.data.write.mmcif import to_mmcif
+        from gemmi import cif
+
+        block = cif.read_string(to_mmcif(target.structure, boltz2=boltz_2))[0]
+        entity_ids = dict(block.find(["_struct_asym.id", "_struct_asym.entity_id"]))
+        assert entity_ids["A"] != entity_ids["B"] == entity_ids["C"]
+        atom_rows = block.find(
+            [
+                "_atom_site.label_asym_id",
+                "_atom_site.label_comp_id",
+                "_atom_site.type_symbol",
+            ]
+        )
+        for name in ("B", "C"):
+            assert any(tuple(row) == (name, "MOD", "P") for row in atom_rows)
+
+        assert chains["A"]["entity_id"] != chains["B"]["entity_id"]
+        assert chains["B"]["entity_id"] == chains["C"]["entity_id"]
+        assert [int(chains[c]["sym_id"]) for c in ("A", "B", "C")] == [0, 0, 1]
+        assert target.sequences == {0: sequence, 1: sequence}
+        for chain in target.record.chains:
+            assert chain.entity_id == chains[chain.chain_name]["entity_id"]
+            assert chain.msa_id == (0 if polymer == "protein" else -1)
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    @pytest.mark.parametrize("boltz_2", [False, True])
+    @pytest.mark.parametrize("polymer", ["protein", "dna", "rna"])
+    def test_cyclic_settings_survive_input_order(
+        self, tmp_path, reverse, boltz_2, polymer
+    ):
+        """Linear and cyclic copies carry distinct periods and entity identities."""
+        entries = [
+            {polymer: {"id": "A", "sequence": "AC"}},
+            {polymer: {"id": "B", "sequence": "AC", "cyclic": True}},
+        ]
+        target = self._parse(entries[::-1] if reverse else entries, tmp_path, boltz_2)
+        chains = {str(c["name"]): c for c in target.structure.chains}
+        assert chains["A"]["cyclic_period"] == 0
+        assert chains["B"]["cyclic_period"] == 2
+        assert chains["A"]["entity_id"] != chains["B"]["entity_id"]
+
+        import numpy as np
+        import torch
+        from gemmi import cif
+        from boltz.data.write.mmcif import to_mmcif
+
+        chain_table = target.structure.chains.copy()
+        plddts = torch.linspace(0.5, 0.9, len(target.structure.residues))
+        block = cif.read_string(
+            to_mmcif(target.structure, plddts=plddts, boltz2=boltz_2)
+        )[0]
+        assert set(block.find_values("_struct_asym.id")) == {"A", "B"}
+        assert len(set(block.find_values("_struct_asym.entity_id"))) == 1
+        assert set(block.find_values("_atom_site.label_asym_id")) == {"A", "B"}
+        assert set(block.find_values("_ma_qa_metric_local.label_asym_id")) == {"A", "B"}
+        assert len(block.find_values("_ma_qa_metric_local.metric_value")) == 4
+        closing_atoms = ("C", "N") if polymer == "protein" else ("O3'", "P")
+        rows = block.find(
+            [
+                "_struct_conn.ptnr1_label_asym_id",
+                "_struct_conn.ptnr1_label_seq_id",
+                "_struct_conn.ptnr1_label_atom_id",
+                "_struct_conn.ptnr2_label_asym_id",
+                "_struct_conn.ptnr2_label_seq_id",
+                "_struct_conn.ptnr2_label_atom_id",
+            ]
+        )
+        assert [tuple(cif.as_string(value) for value in row) for row in rows] == [
+            ("B", "2", closing_atoms[0], "B", "1", closing_atoms[1])
+        ]
+        np.testing.assert_array_equal(target.structure.chains, chain_table)
+
+    def test_equivalent_modification_descriptions_group(self, tmp_path):
+        """Reordered positions and redundant writes retain ordinary symmetry copies."""
+        modifications = [
+            [{"position": 1, "ccd": "MOD"}, {"position": 2, "ccd": "MOD"}],
+            [{"position": 2, "ccd": "MOD"}, {"position": 1, "ccd": "MOD"}],
+            [
+                {"position": 1, "ccd": "ALA"},
+                {"position": 1, "ccd": "MOD"},
+                {"position": 2, "ccd": "MOD"},
+            ],
+        ]
+        target = self._parse(
+            [
+                {"protein": {"id": name, "sequence": "AS", "modifications": mods}}
+                for name, mods in zip(("A", "B", ["C", "D"]), modifications)
+            ],
+            tmp_path,
+        )
+        assert list(target.structure.chains["entity_id"]) == [0, 0, 0, 0]
+        assert list(target.structure.chains["sym_id"]) == [0, 1, 2, 3]
+        for chain in target.structure.chains:
+            assert self._residue_names(target, chain) == ["MOD", "MOD"]
+
+    def test_modification_position_and_last_write_matter(self, tmp_path):
+        """Position and the final write determine the resulting residue chemistry."""
+        modifications = [
+            [{"position": 1, "ccd": "MOD"}],
+            [{"position": 2, "ccd": "MOD"}],
+            [{"position": 1, "ccd": "MOD"}, {"position": 1, "ccd": "ALA"}],
+        ]
+        target = self._parse(
+            [
+                {"protein": {"id": name, "sequence": "AS", "modifications": mods}}
+                for name, mods in zip(("A", "B", "C"), modifications)
+            ],
+            tmp_path,
+        )
+        assert list(target.structure.chains["entity_id"]) == [0, 1, 2]
+        assert [self._residue_names(target, c) for c in target.structure.chains] == [
+            ["MOD", "SER"],
+            ["ALA", "MOD"],
+            ["ALA", "SER"],
+        ]
+
+    def test_ordinary_grouping_and_defaults(self, tmp_path):
+        """Absent and explicit defaults group, while different sequences stay apart."""
+        target = self._parse(
+            [
+                {"protein": {"id": "A", "sequence": "AS"}},
+                {
+                    "protein": {
+                        "id": ["B", "C"],
+                        "sequence": "AS",
+                        "modifications": [],
+                        "cyclic": False,
+                        "msa": None,
+                    }
+                },
+                {"protein": {"id": "D", "sequence": "AA", "msa": ""}},
+                {"ligand": {"id": "L1", "ccd": "ALA"}},
+                {"ligand": {"id": "L2", "ccd": "ALA"}},
+            ],
+            tmp_path,
+        )
+        assert list(target.structure.chains["name"]) == ["A", "B", "C", "D", "L1", "L2"]
+        assert list(target.structure.chains["entity_id"]) == [0, 0, 0, 1, 2, 2]
+        assert list(target.structure.chains["sym_id"]) == [0, 1, 2, 0, 0, 1]
+        assert target.sequences == {0: "AS", 1: "AA"}
+
+    @pytest.mark.parametrize(
+        "chemistry",
+        [
+            {},
+            {"cyclic": True},
+            {
+                "modifications": [{"position": 2, "ccd": "MOD"}],
+            },
+        ],
+    )
+    @pytest.mark.parametrize("msas", [("a.a3m", "b.a3m"), ("empty", 0)])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_msa_consistency_remains_sequence_wide(
+        self, tmp_path, chemistry, msas, reverse
+    ):
+        """Splitting chemistry groups must not allow conflicting sequence MSAs."""
+        entries = [
+            {"protein": {"id": "A", "sequence": "AS", "msa": msas[0]}},
+            {"protein": {"id": "B", "sequence": "AS", "msa": msas[1], **chemistry}},
+        ]
+        with pytest.raises(ValueError, match="same sequence must share the same MSA"):
+            self._parse(entries[::-1] if reverse else entries, tmp_path)
+
+    def test_equivalent_msa_paths_across_chemistry_groups(self, tmp_path):
+        """MSA path normalization and sharing remain independent of entity chemistry."""
+        target = self._parse(
+            [
+                {"protein": {"id": "A", "sequence": "AS", "msa": "custom.a3m"}},
+                {
+                    "protein": {
+                        "id": "B",
+                        "sequence": "AS",
+                        "msa": "sub/../custom.a3m",
+                        "cyclic": True,
+                    }
+                },
+            ],
+            tmp_path,
+        )
+        assert [c.msa_id for c in target.record.chains] == [
+            str(tmp_path / "custom.a3m")
+        ] * 2
+        assert list(target.structure.chains["entity_id"]) == [0, 1]
+
+    def test_custom_and_auto_msa_mixing_still_rejected(self, tmp_path):
+        """Different sequences must still obey the input-wide MSA mode rule."""
+        with pytest.raises(
+            ValueError, match="Cannot mix custom and auto-generated MSAs"
+        ):
+            self._parse(
+                [
+                    {"protein": {"id": "A", "sequence": "AS", "msa": "custom.a3m"}},
+                    {"protein": {"id": "B", "sequence": "AA"}},
+                ],
+                tmp_path,
+            )
+
+    @pytest.mark.parametrize("boltz_2", [False, True])
+    @pytest.mark.parametrize("reverse", [False, True])
+    @pytest.mark.parametrize(
+        "polymer,sequence,code,ordinary",
+        [
+            ("protein", "AS", "ALA", ["ALA", "SER"]),
+            ("protein", "MS", "MSE", ["MET", "SER"]),
+            ("dna", "AC", "DA", ["DA", "DC"]),
+            ("rna", "AC", "A", ["A", "C"]),
+        ],
+    )
+    def test_no_op_modifications_preserve_entity_and_symmetry(
+        self, tmp_path, boltz_2, reverse, polymer, sequence, code, ordinary
+    ):
+        """Native codes, normalized aliases and overwritten writes match plain copies."""
+        entries = [
+            {polymer: {"id": "A", "sequence": sequence}},
+            {
+                polymer: {
+                    "id": "B",
+                    "sequence": sequence,
+                    "modifications": [{"position": 1, "ccd": code}],
+                }
+            },
+            {
+                polymer: {
+                    "id": "C",
+                    "sequence": sequence,
+                    "modifications": [
+                        {"position": 1, "ccd": "MOD"},
+                        {"position": 1, "ccd": code},
+                    ],
+                }
+            },
+        ]
+        target = self._parse(entries[::-1] if reverse else entries, tmp_path, boltz_2)
+        assert list(target.structure.chains["entity_id"]) == [0, 0, 0]
+        assert list(target.structure.chains["sym_id"]) == [0, 1, 2]
+        for chain in target.structure.chains:
+            assert self._residue_names(target, chain) == ordinary
+        assert target.sequences == {0: sequence}
+
+    @pytest.mark.parametrize("boltz_2", [False, True])
+    def test_same_residues_with_different_raw_sequences_remain_separate(
+        self, tmp_path, boltz_2
+    ):
+        """MSA and alignment identity must retain the original input sequence."""
+        target = self._parse(
+            [
+                {
+                    "protein": {
+                        "id": "A",
+                        "sequence": "AS",
+                        "modifications": [{"position": 1, "ccd": "MSE"}],
+                    }
+                },
+                {"protein": {"id": "B", "sequence": "MS"}},
+            ],
+            tmp_path,
+            boltz_2,
+        )
+        assert list(target.structure.chains["entity_id"]) == [0, 1]
+        assert target.sequences == {0: "AS", 1: "MS"}
+        for chain in target.structure.chains:
+            assert self._residue_names(target, chain) == ["MET", "SER"]
+
+        from gemmi import cif
+        from boltz.data.write.mmcif import to_mmcif
+
+        block = cif.read_string(to_mmcif(target.structure, boltz2=boltz_2))[0]
+        assert set(block.find_values("_struct_asym.id")) == {"A", "B"}
+        assert len(set(block.find_values("_struct_asym.entity_id"))) == 1
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    @pytest.mark.parametrize(
+        "modifications", [None, [{"ccd": "SEP"}], [{"position": 1, "ccd": "SEP"}]]
+    )
+    def test_ignored_ligand_modifications_preserve_affinity_copies(
+        self, tmp_path, reverse, modifications
+    ):
+        """Ignored ligand fields must not split chemically identical binder copies."""
+        from boltz.data.parse.schema import parse_boltz_schema
+        from boltz.data.types import Manifest
+        from boltz.main import expand_affinity_records
+
+        entries = [
+            {"ligand": {"id": "L1", "smiles": "CCO"}},
+            {"ligand": {"id": "L2", "smiles": "CCO", "modifications": modifications}},
+        ]
+        target = parse_boltz_schema(
+            tmp_path / "input.yaml",
+            {
+                "sequences": entries[::-1] if reverse else entries,
+                "properties": [{"affinity": {"binder": "L1"}}],
+            },
+            ccd={},
+            boltz_2=True,
+        )
+        assert list(target.structure.chains["entity_id"]) == [0, 0]
+        assert list(target.structure.chains["sym_id"]) == [0, 1]
+        expanded = expand_affinity_records(Manifest([target.record]))
+        assert {r.affinity.chain_name for r in expanded.records} == {"L1", "L2"}
+        assert len(expanded.records) == 2
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    @pytest.mark.parametrize("representation", [{"ccd": "ALA"}, {"smiles": "CCO"}])
+    def test_cyclic_ligand_rejected_in_either_order(
+        self, tmp_path, reverse, representation
+    ):
+        """An invalid later ligand cannot hide behind an ordinary grouped copy."""
+        entries = [
+            {"ligand": {"id": "L1", **representation}},
+            {"ligand": {"id": "L2", **representation, "cyclic": True}},
+        ]
+        with pytest.raises(
+            AssertionError, match="Cyclic flag is not supported for ligands"
+        ):
+            self._parse(entries[::-1] if reverse else entries, tmp_path)
+
+    def test_direct_polymer_parsing_retains_mse_normalization(self, tmp_path):
+        """Direct callers use the same residue normalization as entity grouping."""
+        from boltz.data import const
+        from boltz.data.parse.schema import parse_polymer
+
+        chain = parse_polymer(
+            sequence=["MSE", "SER"],
+            raw_sequence="MS",
+            entity=0,
+            chain_type=const.chain_type_ids["PROTEIN"],
+            components={},
+            cyclic=False,
+            mol_dir=tmp_path,
+        )
+        assert [res.name for res in chain.residues] == ["MET", "SER"]
+
+    @pytest.mark.parametrize("sequence_a,sequence_b", [("XA", "BA"), ("X", "B")])
+    def test_unknown_residues_serialize_with_valid_chain_references(
+        self, tmp_path, sequence_a, sequence_b
+    ):
+        """Honor the output library's special identity rules for unknown entities."""
+        from gemmi import cif
+        from boltz.data.write.mmcif import to_mmcif
+
+        target = self._parse(
+            [
+                {"protein": {"id": "A", "sequence": sequence_a}},
+                {"protein": {"id": "B", "sequence": sequence_b}},
+            ],
+            tmp_path,
+        )
+        block = cif.read_string(to_mmcif(target.structure, boltz2=True))[0]
+        assert list(target.structure.chains["entity_id"]) == [0, 1]
+        assert set(block.find_values("_struct_asym.id")) == {"A", "B"}
+        assert set(block.find_values("_struct_asym.entity_id")) <= set(
+            block.find_values("_entity.id")
+        )
+
+    def test_single_residue_linear_and_cyclic_copies_serialize(self, tmp_path):
+        """Output entity equivalence also applies when no closure bond is defined."""
+        from gemmi import cif
+        from boltz.data.write.mmcif import to_mmcif
+
+        target = self._parse(
+            [
+                {"protein": {"id": "A", "sequence": "A"}},
+                {"protein": {"id": "B", "sequence": "A", "cyclic": True}},
+            ],
+            tmp_path,
+        )
+        block = cif.read_string(to_mmcif(target.structure, boltz2=True))[0]
+        assert list(target.structure.chains["entity_id"]) == [0, 1]
+        assert set(block.find_values("_struct_asym.id")) == {"A", "B"}
+        assert len(set(block.find_values("_struct_asym.entity_id"))) == 1
+        assert not block.find_values("_struct_conn.id")
+
+    def test_equivalent_ccd_forms_serialize_without_changing_internal_ids(
+        self, tmp_path
+    ):
+        """A string and singleton CCD list can share an output entity."""
+        from gemmi import cif
+        from boltz.data.write.mmcif import to_mmcif
+
+        target = self._parse(
+            [
+                {"ligand": {"id": "A", "ccd": "ALA"}},
+                {"ligand": {"id": "B", "ccd": ["ALA"]}},
+            ],
+            tmp_path,
+        )
+        block = cif.read_string(to_mmcif(target.structure, boltz2=True))[0]
+        assert list(target.structure.chains["entity_id"]) == [0, 1]
+        assert set(block.find_values("_struct_asym.id")) == {"A", "B"}
+        assert len(set(block.find_values("_struct_asym.entity_id"))) == 1

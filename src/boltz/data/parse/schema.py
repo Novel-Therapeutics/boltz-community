@@ -899,6 +899,11 @@ def parse_ccd_residue(
     )
 
 
+def _normalize_polymer_residue_name(name: str) -> str:
+    """Use the same residue identity for grouping and polymer construction."""
+    return "MET" if name == "MSE" else name
+
+
 def parse_polymer(
     sequence: list[str],
     raw_sequence: str,
@@ -942,9 +947,7 @@ def parse_polymer(
     # Get coordinates and masks
     parsed = []
     for res_idx, res_name in enumerate(sequence):
-        # Check if modified residue
-        # Map MSE to MET
-        res_corrected = res_name if res_name != "MSE" else "MET"
+        res_corrected = _normalize_polymer_residue_name(res_name)
 
         # Handle non-standard residues
         if res_corrected not in ref_res:
@@ -1116,9 +1119,15 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
     # Disable rdkit warnings
     blocker = rdBase.BlockLogs()  # noqa: F841
 
-    # First group items that have the same type, sequence and modifications
+    # Group entities by sequence and chemistry; protein MSAs remain sequence-wide.
     items_to_group = {}
     chain_name_to_entity_type = {}
+    protein_msa_by_sequence = {}
+    polymer_token_maps = {
+        "protein": const.prot_letter_to_token,
+        "dna": const.dna_letter_to_token,
+        "rna": const.rna_letter_to_token,
+    }
 
     for item in schema["sequences"]:
         # Get entity type
@@ -1131,6 +1140,9 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
         if entity_type in {"protein", "dna", "rna"}:
             seq = str(item[entity_type]["sequence"])
         elif entity_type == "ligand":
+            assert not item[entity_type].get("cyclic", False), (
+                "Cyclic flag is not supported for ligands"
+            )
             assert "smiles" in item[entity_type] or "ccd" in item[entity_type]
             assert "smiles" not in item[entity_type] or "ccd" not in item[entity_type]
             if "smiles" in item[entity_type]:
@@ -1149,8 +1161,31 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 )
                 raise ValueError(msg)
 
-        # Group items by entity
-        items_to_group.setdefault((entity_type, seq), []).append(item)
+        if entity_type == "protein":
+            msa = item[entity_type].get("msa", 0)
+            if (msa is None) or (msa == ""):
+                msa = 0
+            if msa not in (0, "empty"):
+                msa = str((parent / msa).resolve())
+            if protein_msa_by_sequence.setdefault(seq, msa) != msa:
+                msg = "All proteins with the same sequence must share the same MSA!"
+                raise ValueError(msg)
+
+        # Prepare the exact chemistry used to construct each polymer. Equivalent
+        # writes (including no-ops and normalized names) must share an entity.
+        polymer_sequence = ()
+        cyclic = False
+        if entity_type in polymer_token_maps:
+            token_map = polymer_token_maps[entity_type]
+            unk_token = const.unk_token[entity_type.upper()]
+            tokens = [token_map.get(c, unk_token) for c in seq]
+            for mod in item[entity_type].get("modifications", []):
+                tokens[mod["position"] - 1] = mod["ccd"]  # 1-indexed, last write wins
+            polymer_sequence = tuple(_normalize_polymer_residue_name(t) for t in tokens)
+            cyclic = bool(item[entity_type].get("cyclic", False))
+
+        group_key = (entity_type, seq, polymer_sequence, cyclic)
+        items_to_group.setdefault(group_key, []).append(item)
 
         # Map chain names to entity types
         chain_names = item[entity_type]["id"]
@@ -1200,9 +1235,8 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
     is_msa_custom = False
     is_msa_auto = False
     ligand_id = 1
-    for entity_id, items in enumerate(items_to_group.values()):
-        # Get entity type and sequence
-        entity_type = next(iter(items[0].keys())).lower()
+    for entity_id, (group_key, items) in enumerate(items_to_group.items()):
+        entity_type, raw_seq, polymer_sequence, cyclic = group_key
 
         # Get ids
         ids = []
@@ -1216,27 +1250,10 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
         # Multiple copies are expanded later during the affinity prediction pass.
         affinity = any(x in affinity_ligands for x in ids)
 
-        # Ensure all the items share the same msa
+        # Use the MSA already validated across all proteins with this sequence.
         msa = -1
         if entity_type == "protein":
-            # Get the msa, default to 0, meaning auto-generated
-            msa = items[0][entity_type].get("msa", 0)
-            if (msa is None) or (msa == ""):
-                msa = 0
-            if msa not in (0, "empty"):
-                msa = str((parent / msa).resolve())
-
-            # Check if all MSAs are the same within the same entity
-            for item in items:
-                item_msa = item[entity_type].get("msa", 0)
-                if (item_msa is None) or (item_msa == ""):
-                    item_msa = 0
-                if item_msa not in (0, "empty"):
-                    item_msa = str((parent / item_msa).resolve())
-
-                if item_msa != msa:
-                    msg = "All proteins with the same sequence must share the same MSA!"
-                    raise ValueError(msg)
+            msa = protein_msa_by_sequence[raw_seq]
 
             # Set the MSA, warn if passed in single-sequence mode
             if msa == "empty":
@@ -1255,39 +1272,12 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
 
         # Parse a polymer
         if entity_type in {"protein", "dna", "rna"}:
-            # Get token map
-            if entity_type == "rna":
-                token_map = const.rna_letter_to_token
-            elif entity_type == "dna":
-                token_map = const.dna_letter_to_token
-            elif entity_type == "protein":
-                token_map = const.prot_letter_to_token
-            else:
-                msg = f"Unknown polymer type: {entity_type}"
-                raise ValueError(msg)
-
-            # Get polymer info
             chain_type = const.chain_type_ids[entity_type.upper()]
-            unk_token = const.unk_token[entity_type.upper()]
-
-            # Extract sequence
-            raw_seq = items[0][entity_type]["sequence"]
             entity_to_seq[entity_id] = raw_seq
-
-            # Convert sequence to tokens
-            seq = [token_map.get(c, unk_token) for c in list(raw_seq)]
-
-            # Apply modifications
-            for mod in items[0][entity_type].get("modifications", []):
-                code = mod["ccd"]
-                idx = mod["position"] - 1  # 1-indexed
-                seq[idx] = code
-
-            cyclic = items[0][entity_type].get("cyclic", False)
 
             # Parse a polymer
             parsed_chain = parse_polymer(
-                sequence=seq,
+                sequence=list(polymer_sequence),
                 raw_sequence=raw_seq,
                 entity=entity_id,
                 chain_type=chain_type,
@@ -1345,10 +1335,6 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 cyclic_period=0,
                 sequence=None,
                 affinity_mw=affinity_mw,
-            )
-
-            assert not items[0][entity_type].get("cyclic", False), (
-                "Cyclic flag is not supported for ligands"
             )
 
         elif (entity_type == "ligand") and ("smiles" in items[0][entity_type]):
@@ -1424,10 +1410,6 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 cyclic_period=0,
                 sequence=None,
                 affinity_mw=affinity_mw,
-            )
-
-            assert not items[0][entity_type].get("cyclic", False), (
-                "Cyclic flag is not supported for ligands"
             )
 
         else:

@@ -179,6 +179,11 @@ def run_mmseqs2(  # noqa: PLR0912, D103, C901, PLR0915
     # process input x
     seqs = [x] if isinstance(x, str) else x
 
+    # Chemistry can split one protein sequence into several entities. Pairing
+    # requires distinct sequences; repeated copies use only the unpaired MSA.
+    if use_pairing and len(set(seqs)) == 1:
+        return [""] * len(seqs)
+
     # setup mode
     if use_filter:
         mode = "env" if use_env else "all"
