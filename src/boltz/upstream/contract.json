@@ -205,7 +205,7 @@
     "data/parse/mmcif.py": "55fd4736117ab24369de5d8be6fce42a2cb09f2643135bc7af3b42daafd26bef",
     "data/parse/mmcif_with_constraints.py": "db9d36073cf718449835783fea2c0ddaf6ae036d8858caa4155e7fd0ae1b8768",
     "data/parse/pdb.py": "5d50a62f86eec1dfa41fb8e9d649bb8d40f8dee22f98565399fcaca63bd4c47e",
-    "data/parse/schema.py": "612a9ade5ad36796104d72f05ac70c4b56dd015b3391dadc4e9d14a01aac4c00",
+    "data/parse/schema.py": "d93f5d1189291bf3aa0bf55ac57032a27775915f558d40e838a012eb90400c4c",
     "data/parse/yaml.py": "b04b63d5657db3637c36ba8fb8cfed89c2f2788b3b60e36992afd256ee9febba",
     "data/sample/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "data/sample/cluster.py": "f52c7ca8fef3199380c84b29c1816d0936c64c1667b8dfb37c22856db03fea82",

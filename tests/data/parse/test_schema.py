@@ -802,7 +802,7 @@ class TestEntityChemistryGrouping:
             assert self._residue_names(target, chain) == ["MOD", "MOD"]
 
     def test_modification_position_and_last_write_matter(self, tmp_path):
-        """The same CCD at different positions and reversed overwrites differ."""
+        """Position and the final write determine the resulting residue chemistry."""
         modifications = [
             [{"position": 1, "ccd": "MOD"}],
             [{"position": 2, "ccd": "MOD"}],
@@ -903,3 +903,123 @@ class TestEntityChemistryGrouping:
                 ],
                 tmp_path,
             )
+
+    @pytest.mark.parametrize("boltz_2", [False, True])
+    @pytest.mark.parametrize("reverse", [False, True])
+    @pytest.mark.parametrize(
+        "polymer,sequence,code,ordinary",
+        [
+            ("protein", "AS", "ALA", ["ALA", "SER"]),
+            ("protein", "MS", "MSE", ["MET", "SER"]),
+            ("dna", "AC", "DA", ["DA", "DC"]),
+            ("rna", "AC", "A", ["A", "C"]),
+        ],
+    )
+    def test_no_op_modifications_preserve_entity_and_symmetry(
+        self, tmp_path, boltz_2, reverse, polymer, sequence, code, ordinary
+    ):
+        """Native codes, normalized aliases and overwritten writes match plain copies."""
+        entries = [
+            {polymer: {"id": "A", "sequence": sequence}},
+            {
+                polymer: {
+                    "id": "B",
+                    "sequence": sequence,
+                    "modifications": [{"position": 1, "ccd": code}],
+                }
+            },
+            {
+                polymer: {
+                    "id": "C",
+                    "sequence": sequence,
+                    "modifications": [
+                        {"position": 1, "ccd": "MOD"},
+                        {"position": 1, "ccd": code},
+                    ],
+                }
+            },
+        ]
+        target = self._parse(entries[::-1] if reverse else entries, tmp_path, boltz_2)
+        assert list(target.structure.chains["entity_id"]) == [0, 0, 0]
+        assert list(target.structure.chains["sym_id"]) == [0, 1, 2]
+        for chain in target.structure.chains:
+            assert self._residue_names(target, chain) == ordinary
+        assert target.sequences == {0: sequence}
+
+    def test_same_residues_with_different_raw_sequences_remain_separate(self, tmp_path):
+        """MSA and alignment identity must retain the original input sequence."""
+        target = self._parse(
+            [
+                {
+                    "protein": {
+                        "id": "A",
+                        "sequence": "AS",
+                        "modifications": [{"position": 1, "ccd": "MSE"}],
+                    }
+                },
+                {"protein": {"id": "B", "sequence": "MS"}},
+            ],
+            tmp_path,
+        )
+        assert list(target.structure.chains["entity_id"]) == [0, 1]
+        assert target.sequences == {0: "AS", 1: "MS"}
+        for chain in target.structure.chains:
+            assert self._residue_names(target, chain) == ["MET", "SER"]
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    @pytest.mark.parametrize(
+        "modifications", [None, [{"ccd": "SEP"}], [{"position": 1, "ccd": "SEP"}]]
+    )
+    def test_ignored_ligand_modifications_preserve_affinity_copies(
+        self, tmp_path, reverse, modifications
+    ):
+        """Ignored ligand fields must not split chemically identical binder copies."""
+        from boltz.data.parse.schema import parse_boltz_schema
+        from boltz.data.types import Manifest
+        from boltz.main import expand_affinity_records
+
+        entries = [
+            {"ligand": {"id": "L1", "smiles": "CCO"}},
+            {"ligand": {"id": "L2", "smiles": "CCO", "modifications": modifications}},
+        ]
+        target = parse_boltz_schema(
+            tmp_path / "input.yaml",
+            {
+                "sequences": entries[::-1] if reverse else entries,
+                "properties": [{"affinity": {"binder": "L1"}}],
+            },
+            ccd={},
+            boltz_2=True,
+        )
+        assert list(target.structure.chains["entity_id"]) == [0, 0]
+        assert list(target.structure.chains["sym_id"]) == [0, 1]
+        expanded = expand_affinity_records(Manifest([target.record]))
+        assert {r.affinity.chain_name for r in expanded.records} == {"L1", "L2"}
+        assert len(expanded.records) == 2
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    @pytest.mark.parametrize("representation", [{"ccd": "ALA"}, {"smiles": "CCO"}])
+    def test_cyclic_ligand_rejected_in_either_order(
+        self, tmp_path, reverse, representation
+    ):
+        """An invalid later ligand cannot hide behind an ordinary grouped copy."""
+        entries = [
+            {"ligand": {"id": "L1", **representation}},
+            {"ligand": {"id": "L2", **representation, "cyclic": True}},
+        ]
+        with pytest.raises(
+            AssertionError, match="Cyclic flag is not supported for ligands"
+        ):
+            self._parse(entries[::-1] if reverse else entries, tmp_path)
+
+    def test_direct_polymer_parsing_retains_mse_normalization(self, tmp_path):
+        """Direct callers use the same residue normalization as entity grouping."""
+        from boltz.data import const
+        from boltz.data.parse.schema import parse_polymer
+
+        chain = parse_polymer(
+            sequence=["MSE", "SER"], raw_sequence="MS", entity=0,
+            chain_type=const.chain_type_ids["PROTEIN"], components={},
+            cyclic=False, mol_dir=tmp_path,
+        )
+        assert [res.name for res in chain.residues] == ["MET", "SER"]
