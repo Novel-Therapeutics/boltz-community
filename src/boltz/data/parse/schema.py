@@ -1116,9 +1116,10 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
     # Disable rdkit warnings
     blocker = rdBase.BlockLogs()  # noqa: F841
 
-    # First group items that have the same type, sequence and modifications
+    # Group entities by sequence and chemistry; protein MSAs remain sequence-wide.
     items_to_group = {}
     chain_name_to_entity_type = {}
+    protein_msa_by_sequence = {}
 
     for item in schema["sequences"]:
         # Get entity type
@@ -1149,8 +1150,29 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 )
                 raise ValueError(msg)
 
-        # Group items by entity
-        items_to_group.setdefault((entity_type, seq), []).append(item)
+        if entity_type == "protein":
+            msa = item[entity_type].get("msa", 0)
+            if (msa is None) or (msa == ""):
+                msa = 0
+            if msa not in (0, "empty"):
+                msa = str((parent / msa).resolve())
+            if protein_msa_by_sequence.setdefault(seq, msa) != msa:
+                msg = "All proteins with the same sequence must share the same MSA!"
+                raise ValueError(msg)
+
+        # Applying modifications is last-write-wins at each position. Canonicalize
+        # that mapping so equivalent descriptions still share an entity.
+        modifications = {
+            mod["position"]: mod["ccd"]
+            for mod in item[entity_type].get("modifications", [])
+        }
+        group_key = (
+            entity_type,
+            seq,
+            tuple(sorted(modifications.items())),
+            bool(item[entity_type].get("cyclic", False)),
+        )
+        items_to_group.setdefault(group_key, []).append(item)
 
         # Map chain names to entity types
         chain_names = item[entity_type]["id"]
@@ -1216,27 +1238,10 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
         # Multiple copies are expanded later during the affinity prediction pass.
         affinity = any(x in affinity_ligands for x in ids)
 
-        # Ensure all the items share the same msa
+        # Use the MSA already validated across all proteins with this sequence.
         msa = -1
         if entity_type == "protein":
-            # Get the msa, default to 0, meaning auto-generated
-            msa = items[0][entity_type].get("msa", 0)
-            if (msa is None) or (msa == ""):
-                msa = 0
-            if msa not in (0, "empty"):
-                msa = str((parent / msa).resolve())
-
-            # Check if all MSAs are the same within the same entity
-            for item in items:
-                item_msa = item[entity_type].get("msa", 0)
-                if (item_msa is None) or (item_msa == ""):
-                    item_msa = 0
-                if item_msa not in (0, "empty"):
-                    item_msa = str((parent / item_msa).resolve())
-
-                if item_msa != msa:
-                    msg = "All proteins with the same sequence must share the same MSA!"
-                    raise ValueError(msg)
+            msa = protein_msa_by_sequence[str(items[0][entity_type]["sequence"])]
 
             # Set the MSA, warn if passed in single-sequence mode
             if msa == "empty":
